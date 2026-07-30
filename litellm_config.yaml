@@ -1,0 +1,8 @@
+model_list:
+  - model_name: "*"
+    litellm_params:
+      model: "custom_openai/gemma-4-26b-a4b-it"
+      api_base: "http://127.0.0.1:8085/v1"
+      api_key: "dummy"
+general_settings:
+  master_key: "sk-local-dev-key"

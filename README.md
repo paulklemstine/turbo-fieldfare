@@ -43,22 +43,53 @@ llama.cpp. The curated [experiment record](docs/experiments/EXPERIMENT_INVENTORY
 summarizes 103 measured results across kernels, caching, I/O, prefill, and
 decode.
 
-## Try it
+## Quick Start & Installation
 
+### 1. Build TurboFieldfare
 ```bash
-git clone https://github.com/drumih/turbo-fieldfare.git
+git clone https://github.com/paulklemstine/turbo-fieldfare.git
 cd turbo-fieldfare
 swift build -c release
-.build/release/TurboFieldfareMac
 ```
 
-On the first run, Swift Package Manager downloads and builds the Swift packages
-required by the tokenizer. The complete release build includes the foreground
-Mac app and its sibling decode-service executable.
+### 2. Download and Install Pinned Model
+```bash
+swift run -c release TurboFieldfareRepack --output scratch/gemma4.gturbo --overwrite
+```
 
-When the app opens, choose **Download** and let TurboFieldfare fetch and repack
-the pinned model (about 15 GB). Once it is ready, choose **Load Model**, type
-your prompt, and press **Generate**.
+### 3. Launch Local Server + Claude Code Stack
+To run Claude Code locally against the TurboFieldfare server:
+```bash
+./start.sh
+```
+
+`start.sh` automatically launches:
+- **TurboFieldfareServer** on port `8080`
+- **Sanitizer Gateway** on port `8085` (payload cleaning & Jinja tool schema compatibility)
+- **LiteLLM Proxy** on port `4001`
+- **Proxy Bridge** on port `4000` (responds to Claude health checks & routes requests)
+- **Claude Code CLI** connected to the local offline proxy pipeline
+
+---
+
+## Model Replacement & Abliterated Model Support
+
+To use an unquantized model such as `huihui-ai/Huihui-gemma-4-26B-A4B-it-abliterated`:
+
+1. Install `mlx-lm`:
+   ```bash
+   pip3 install mlx mlx-lm
+   ```
+
+2. Quantize the model to 4-bit group-64 affine MLX format:
+   ```bash
+   python3 -m mlx_lm convert \
+     --hf-path huihui-ai/Huihui-gemma-4-26B-A4B-it-abliterated \
+     --mlx-path scratch/huihui_gemma4_mlx_4bit \
+     -q --q-group-size 64 --q-bits 4 --q-mode affine
+   ```
+
+---
 
 ## At a glance
 
