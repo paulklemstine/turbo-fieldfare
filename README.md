@@ -57,18 +57,23 @@ swift build -c release
 swift run -c release TurboFieldfareRepack --output scratch/gemma4.gturbo --overwrite
 ```
 
-### 3. Launch Local Server + Claude Code Stack
-To run Claude Code locally against the TurboFieldfare server:
+### 3. Launch Local Server + Pi Agent Stack
+To run the [Pi coding agent](https://pi.dev/) locally against the TurboFieldfare server:
 ```bash
 ./start.sh
 ```
 
 `start.sh` automatically launches:
 - **TurboFieldfareServer** on port `8080`
-- **Sanitizer Gateway** on port `8085` (payload cleaning & Jinja tool schema compatibility)
-- **LiteLLM Proxy** on port `4001`
-- **Proxy Bridge** on port `4000` (responds to Claude health checks & routes requests)
-- **Claude Code CLI** connected to the local offline proxy pipeline
+- Writes `~/.pi/agent/models.json` pointing the `turbofieldfare` provider at the local server
+- **Pi Agent** (`pi --model turbofieldfare/gemma-4-26b-a4b-it`)
+
+Pi talks to the server directly through its OpenAI-compatible API, so no LiteLLM
+proxy or translation bridge is needed. Install Pi once with:
+
+```bash
+npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+```
 
 ---
 
