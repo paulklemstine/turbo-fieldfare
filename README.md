@@ -85,6 +85,79 @@ npm install -g --ignore-scripts @earendil-works/pi-coding-agent
 
 ---
 
+## Linux (NVIDIA GPU)
+
+On Linux with an NVIDIA GPU, `start.sh` dispatches to `start-linux.sh`, which
+runs the same Gemma 4 26B-A4B model on **llama.cpp + CUDA** instead of the
+Swift/Metal backend. The modes, the OpenAI-compatible server on port `8080`,
+and the Pi agent setup are identical to the Mac path — only the inference
+engine changes.
+
+This is the spiritual counterpart to the Mac version's expert-streaming trick:
+llama.cpp keeps a small resident core on the GPU and runs the rest on the CPU
+(`-ngl` layers), so the ~10.7 GB model fits in a 6 GB VRAM GPU + system RAM.
+
+### Requirements
+
+- Linux with an NVIDIA GPU (compute capability 8.0+; tested on an RTX 4050 Laptop, 6 GB VRAM)
+- NVIDIA driver 590+ and the CUDA 13.x toolkit
+- `cmake` and a C++17 compiler (GCC 13+)
+- ~11 GB free disk for the Q2_K quant; ~6 GB VRAM + system RAM
+
+### 1. Install build dependencies
+
+```bash
+sudo apt-get install -y cmake cuda-toolkit-13
+```
+
+### 2. Build llama.cpp with CUDA
+
+```bash
+git clone --depth 1 https://github.com/ggerganov/llama.cpp.git
+cd llama.cpp
+cmake -B build -DGGML_CUDA=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc) --target llama-server
+```
+
+### 3. Download the abliterated model (Q2_K)
+
+```bash
+pip install hf_transfer
+HF_HUB_ENABLE_HF_TRANSFER=1 python3 -c "
+from huggingface_hub import snapshot_download
+snapshot_download(
+    repo_id='mradermacher/gemma-4-26B-A4B-it-abliterated-GGUF',
+    allow_patterns=['gemma-4-26B-A4B-it-abliterated.Q2_K.gguf'],
+    local_dir='models',
+)
+"
+```
+
+### 4. Launch
+
+```bash
+./start.sh                                  # Pi coding agent (tool use)
+./start.sh --chat                           # interactive chat
+./start.sh --ask "What is the capital of France?"   # single prompt
+```
+
+Override the GPU layer count to fit your VRAM (default `18` is tuned for a
+6 GB card):
+
+```bash
+GPU_LAYERS=15 ./start.sh --chat
+```
+
+> **WSL2 note:** if `llama-cli`/`llama-server` segfault at CUDA init, the
+> system `libnvidia-ptxjitcompiler.so.1` is likely a stale version that can't
+> JIT the CUDA runtime's PTX. Point the symlink at the WSL2 driver's copy:
+> ```bash
+> sudo ln -sf /usr/lib/wsl/drivers/*/libnvidia-ptxjitcompiler.so.1 \
+>   /lib/x86_64-linux-gnu/libnvidia-ptxjitcompiler.so.1
+> ```
+
+---
+
 ## Model Replacement & Abliterated Model Support
 
 To use an unquantized model such as `huihui-ai/Huihui-gemma-4-26B-A4B-it-abliterated`:
@@ -112,8 +185,8 @@ To use an unquantized model such as `huihui-ai/Huihui-gemma-4-26B-A4B-it-abliter
 | Weights         | MLX affine 4-bit, group 64; 8-bit router; 4-bit shared and routed experts                                                |
 | Memory          | ~2 GB of weights and 4K KV cache                                                                                         |
 | Storage         | About 14.3 GB for the installed text-only model                                                                          |
-| Hardware        | Apple Silicon Mac; 8 GB of RAM                                                                                            |
-| Platform        | macOS 26, Metal 4, Swift 6.2                                                                                             |
+| Hardware        | Apple Silicon Mac (8 GB RAM); or Linux + NVIDIA GPU (6 GB+ VRAM)                                                         |
+| Platform        | macOS 26, Metal 4, Swift 6.2; or Linux + CUDA 13.x, llama.cpp                                                           |
 | M2 measured decode | [5.1-6.3 tok/s](docs/BENCHMARKS.md#m2-measured-decode) on an 8 GB M2 MacBook Air |
 | M5 measured decode | [31-35 tok/s](docs/BENCHMARKS.md#m5-measured-decode) on a 24 GB M5 Pro |
 

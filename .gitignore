@@ -38,6 +38,9 @@ Model/
 *.swp
 *~
 
+# Serena agent tooling
+.serena/
+
 # Logs / scratch
 *.log
 benchmark-results/
