@@ -97,7 +97,8 @@ def main():
         if not prompt:
             parser.error("--ask requires a prompt argument or piped stdin")
         messages.append({"role": "user", "content": prompt})
-        send(messages, args)
+        if send(messages, args) is None:
+            sys.exit(1)
         return
 
     print("TurboFieldfare chat (%s). /quit to exit." % args.model)
@@ -120,6 +121,7 @@ def main():
             reply = send(messages, args)
             if reply is None:
                 messages.pop()
+                sys.exit(1)
             else:
                 messages.append({"role": "assistant", "content": reply})
     except KeyboardInterrupt:

@@ -44,16 +44,26 @@ case "${1:-}" in
         ;;
 esac
 
+if [ "$MODE" = "ask" ]; then
+    ASK_PROMPT="$*"
+    if [ -z "$ASK_PROMPT" ]; then
+        echo "ERROR: --ask requires a prompt." >&2
+        usage
+        exit 1
+    fi
+fi
+
 echo "Starting TurboFieldfare + Gemma 4 Local Stack..."
 
 PIDS=()
 
 cleanup() {
+    code=$?
     echo -e "\nShutting down background processes..."
     for pid in "${PIDS[@]}"; do
         kill "$pid" 2>/dev/null
     done
-    exit 0
+    exit "$code"
 }
 trap cleanup SIGINT SIGTERM EXIT
 
@@ -117,14 +127,8 @@ fi
 # 3. Launch the chosen client
 case "$MODE" in
     ask)
-        prompt="$*"
-        if [ -z "$prompt" ]; then
-            echo "ERROR: --ask requires a prompt." >&2
-            usage
-            exit 1
-        fi
-        echo "-> Asking TurboFieldfare: $prompt"
-        python3 "$CHAT_SCRIPT" --ask "$prompt"
+        echo "-> Asking TurboFieldfare: $ASK_PROMPT"
+        python3 "$CHAT_SCRIPT" --ask "$ASK_PROMPT"
         ;;
     chat)
         echo "-> Starting interactive chat with TurboFieldfare..."
