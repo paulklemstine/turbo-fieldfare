@@ -57,16 +57,24 @@ swift build -c release
 swift run -c release TurboFieldfareRepack --output scratch/gemma4.gturbo --overwrite
 ```
 
-### 3. Launch Local Server + Pi Agent Stack
-To run the [Pi coding agent](https://pi.dev/) locally against the TurboFieldfare server:
+### 3. Launch Local Server + Client Stack
+`start.sh` starts the TurboFieldfare server on port `8080` and then launches a client.
+All modes shut the server down again when the client exits.
+
 ```bash
-./start.sh
+./start.sh                                  # Pi coding agent (tool use)
+./start.sh --chat                           # interactive chat directly with the model
+./start.sh --ask "What is the capital of France?"   # single prompt, print reply, exit
 ```
 
-`start.sh` automatically launches:
-- **TurboFieldfareServer** on port `8080`
-- Writes `~/.pi/agent/models.json` pointing the `turbofieldfare` provider at the local server
-- **Pi Agent** (`pi --model turbofieldfare/gemma-4-26b-a4b-it`)
+- **Pi Agent** (default): writes `~/.pi/agent/models.json` pointing the
+  `turbofieldfare` provider at the local server, then runs
+  `pi --model turbofieldfare/gemma-4-26b-a4b-it`.
+- **`--chat` / `--ask`**: a minimal client (`Scripts/chat.py`) that talks
+  directly to the server's OpenAI-compatible API with no agent or tools.
+  `--chat` is an interactive REPL that keeps the conversation history so the
+  model can follow up; `--ask` runs a single prompt and exits. Both stream
+  tokens as they are generated.
 
 Pi talks to the server directly through its OpenAI-compatible API, so no LiteLLM
 proxy or translation bridge is needed. Install Pi once with:
