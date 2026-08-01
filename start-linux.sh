@@ -256,30 +256,33 @@ if [ "${USE_CUSTOM_CHAT_TEMPLATE:-0}" = "1" ] && [ -f "$CHAT_TEMPLATE" ]; then
 fi
 
 ensure_server_running() {
-    if curl -s -m 2 "http://${SERVER_HOST}:${SERVER_PORT}/health" >/dev/null 2>&1; then
-        log_info "-> llama.cpp Server process detected on port $SERVER_PORT."
-    else
-        log_info "-> Launching llama.cpp Server on port $SERVER_PORT..."
+    if curl -s -m 2 "http://${SERVER_HOST}:${SERVER_PORT}/health" | grep -q '"status":"ok"'; then
+        log_info "-> llama.cpp Server is ready on port $SERVER_PORT."
+        return 0
+    fi
+
+    if ! curl -s -m 2 "http://${SERVER_HOST}:${SERVER_PORT}/health" >/dev/null 2>&1; then
+        echo "-> Launching llama.cpp Server (GPU layers: $GPU_LAYERS)..."
         stdbuf -oL -eL "$LLAMA_SERVER" "${LLAMA_COMMON[@]}" --host "$SERVER_HOST" --port "$SERVER_PORT" \
             > "$REPO_DIR/llama_server.log" 2>&1 &
         SERVER_PID=$!
         PIDS+=("$SERVER_PID")
     fi
 
-    log_info "-> Waiting for llama.cpp Server to finish loading and be ready..."
+    echo "-> Loading model weights into memory (please wait)..."
     local ready=0
     for i in $(seq 1 600); do
         if curl -s -m 2 "http://${SERVER_HOST}:${SERVER_PORT}/health" | grep -q '"status":"ok"'; then
-            log_info "-> llama.cpp Server ready."
+            echo "-> Model ready."
             ready=1
             break
         fi
         if [ -n "${SERVER_PID:-}" ] && ! kill -0 "$SERVER_PID" 2>/dev/null; then
-            echo "ERROR: llama.cpp Server crashed. Check $REPO_DIR/llama_server.log" >&2
+            echo "ERROR: llama.cpp Server crashed during startup. Check $REPO_DIR/llama_server.log" >&2
             exit 1
         fi
-        if [ "$DEBUG" = "1" ] && [ $((i % 15)) -eq 0 ]; then
-            log_info "-> Still loading model... (${i}s elapsed)"
+        if [ $((i % 10)) -eq 0 ]; then
+            echo "-> Still loading model... (${i}s)"
         fi
         sleep 1
     done
@@ -291,14 +294,12 @@ ensure_server_running() {
 }
 
 # --- Modes that talk directly to the server via the existing chat client ---
-# Scripts/chat.py speaks the OpenAI Chat Completions API, so it works against
-# llama-server exactly as it does against TurboFieldfareServer.
 if [ "$MODE" = "ask" ] || [ "$MODE" = "chat" ]; then
     ensure_server_running
 
     if [ "$MODE" = "ask" ]; then
         log_info "-> Asking Gemma 4: $ASK_PROMPT"
-        exec python3 "$CHAT_SCRIPT" --ask "$ASK_PROMPT" --no-stream
+        exec python3 "$CHAT_SCRIPT" --ask "$ASK_PROMPT"
     fi
 
     log_info "-> Starting interactive chat with Gemma 4..."
