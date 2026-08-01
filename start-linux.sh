@@ -22,7 +22,15 @@ export PATH="/usr/local/cuda/bin:$HOME/.local/bin:/opt/homebrew/bin:$PATH"
 export LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CHAT_SCRIPT="$REPO_DIR/Scripts/chat.py"
+if [ -f "$REPO_DIR/Scripts/chat.py" ]; then
+    CHAT_SCRIPT="$REPO_DIR/Scripts/chat.py"
+elif [ -f "$REPO_DIR/turbo-fieldfare/Scripts/chat.py" ]; then
+    CHAT_SCRIPT="$REPO_DIR/turbo-fieldfare/Scripts/chat.py"
+elif [ -f "$REPO_DIR/../Scripts/chat.py" ]; then
+    CHAT_SCRIPT="$REPO_DIR/../Scripts/chat.py"
+else
+    CHAT_SCRIPT="$REPO_DIR/Scripts/chat.py"
+fi
 
 # --- Backend location ---------------------------------------------------------
 # llama.cpp checkout. Override if yours lives elsewhere.
