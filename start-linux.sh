@@ -60,9 +60,8 @@ fi
 MODEL_PATH="${MODEL_PATH:-$DEFAULT_MODEL_PATH}"
 CHAT_TEMPLATE="${CHAT_TEMPLATE:-$REPO_DIR/models/chat_template.jinja}"
 
-# Number of transformer layers offloaded to the GPU; default to 0 for instant CPU startup.
-# Set GPU_LAYERS=18 to offload layers to NVIDIA GPU VRAM.
-GPU_LAYERS="${GPU_LAYERS:-0}"
+# Transformer layers offloaded to GPU (0 = CPU mode, 18 = RTX 4050 GPU mode)
+GPU_LAYERS="${GPU_LAYERS:-}"
 CONTEXT_TOKENS="${CONTEXT_TOKENS:-4096}"
 SERVER_PORT="${SERVER_PORT:-8080}"
 SERVER_HOST="127.0.0.1"
@@ -96,6 +95,8 @@ Examples:
 EOF
 }
 
+FORCE_CPU=0
+FORCE_GPU=0
 DEBUG=0
 MODE="pi"
 ASK_PROMPT=""
@@ -103,6 +104,14 @@ POSITIONAL_ARGS=()
 
 while [ $# -gt 0 ]; do
     case "$1" in
+        --cpu)
+            FORCE_CPU=1
+            shift
+            ;;
+        --gpu)
+            FORCE_GPU=1
+            shift
+            ;;
         --debug)
             DEBUG=1
             shift
@@ -129,6 +138,18 @@ while [ $# -gt 0 ]; do
             ;;
     esac
 done
+
+if [ "$FORCE_CPU" = "1" ]; then
+    GPU_LAYERS=0
+elif [ "$FORCE_GPU" = "1" ]; then
+    GPU_LAYERS="${GPU_LAYERS:-18}"
+elif [ -z "${GPU_LAYERS:-}" ]; then
+    if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
+        GPU_LAYERS=18
+    else
+        GPU_LAYERS=0
+    fi
+fi
 
 log_info() {
     if [ "$DEBUG" = "1" ]; then
