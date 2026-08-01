@@ -139,16 +139,49 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+detect_gpu_layers() {
+    if ! command -v nvidia-smi >/dev/null 2>&1; then
+        echo 0
+        return
+    fi
+
+    local free_vram_mb
+    free_vram_mb=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | head -n 1 | tr -d '[:space:]')
+
+    if [ -z "$free_vram_mb" ] || ! [[ "$free_vram_mb" =~ ^[0-9]+$ ]]; then
+        echo 0
+        return
+    fi
+
+    # Reserve 600 MB for context & server overhead
+    local usable_vram=$((free_vram_mb - 600))
+    if [ $usable_vram -le 0 ]; then
+        echo 0
+        return
+    fi
+
+    # Gemma 4 26B Q2_K has ~320 MB per transformer layer (30 layers total)
+    local layers=$((usable_vram / 320))
+    if [ $layers -gt 30 ]; then
+        layers=30
+    fi
+
+    echo "$layers"
+}
+
 if [ "$FORCE_CPU" = "1" ]; then
     GPU_LAYERS=0
+elif [ -n "${GPU_LAYERS:-}" ]; then
+    # Respect explicit user environment override
+    :
 elif [ "$FORCE_GPU" = "1" ]; then
-    GPU_LAYERS="${GPU_LAYERS:-18}"
-elif [ -z "${GPU_LAYERS:-}" ]; then
-    if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
-        GPU_LAYERS=18
-    else
-        GPU_LAYERS=0
+    GPU_LAYERS=$(detect_gpu_layers)
+    if [ "$GPU_LAYERS" = "0" ]; then
+        GPU_LAYERS=16
     fi
+else
+    # Auto-detect layer count based on free VRAM
+    GPU_LAYERS=$(detect_gpu_layers)
 fi
 
 log_info() {
