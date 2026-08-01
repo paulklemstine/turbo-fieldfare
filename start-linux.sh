@@ -16,10 +16,11 @@
 
 NVDRIVER_DIR=$(ls -d /usr/lib/wsl/drivers/nvhm.inf_amd64_* 2>/dev/null | head -n 1)
 if [ -n "$NVDRIVER_DIR" ]; then
-    export LD_LIBRARY_PATH="$NVDRIVER_DIR:/usr/lib/wsl/lib:${LD_LIBRARY_PATH:-}"
+    export LD_LIBRARY_PATH="$NVDRIVER_DIR:/usr/lib/wsl/lib:/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
+else
+    export LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
 fi
 export PATH="/usr/local/cuda/bin:$HOME/.local/bin:/opt/homebrew/bin:$PATH"
-export LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "$REPO_DIR/Scripts/chat.py" ]; then
