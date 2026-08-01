@@ -97,24 +97,52 @@ Examples:
 EOF
 }
 
+DEBUG=0
 MODE="pi"
-case "${1:-}" in
-    --ask)
-        MODE="ask"
-        shift
-        ;;
-    --chat)
-        MODE="chat"
-        shift
-        ;;
-    -h|--help)
-        usage
-        exit 0
-        ;;
-esac
+ASK_PROMPT=""
+POSITIONAL_ARGS=()
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --debug)
+            DEBUG=1
+            shift
+            ;;
+        --ask)
+            MODE="ask"
+            shift
+            if [ $# -gt 0 ] && [[ "$1" != --* ]]; then
+                ASK_PROMPT="$1"
+                shift
+            fi
+            ;;
+        --chat)
+            MODE="chat"
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            POSITIONAL_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+log_info() {
+    if [ "$DEBUG" = "1" ]; then
+        echo "$@"
+    fi
+}
 
 if [ "$MODE" = "ask" ]; then
-    ASK_PROMPT="$*"
+    if [ -z "$ASK_PROMPT" ]; then
+        if [ ${#POSITIONAL_ARGS[@]} -gt 0 ]; then
+            ASK_PROMPT="${POSITIONAL_ARGS[*]}"
+        fi
+    fi
     if [ -z "$ASK_PROMPT" ]; then
         echo "ERROR: --ask requires a prompt." >&2
         usage
@@ -142,16 +170,18 @@ if [ ! -f "$MODEL_PATH" ]; then
     exit 1
 fi
 
-echo "Starting llama.cpp + Gemma 4 (NVIDIA/Linux) Local Stack..."
-echo "  backend: $LLAMA_SERVER"
-echo "  model:   $MODEL_PATH"
-echo "  gpu layers: $GPU_LAYERS  |  context: $CONTEXT_TOKENS  |  port: $SERVER_PORT"
+log_info "Starting llama.cpp + Gemma 4 (NVIDIA/Linux) Local Stack..."
+log_info "  backend: $LLAMA_SERVER"
+log_info "  model:   $MODEL_PATH"
+log_info "  gpu layers: $GPU_LAYERS  |  context: $CONTEXT_TOKENS  |  port: $SERVER_PORT"
 
 PIDS=()
 
 cleanup() {
     code=$?
-    echo -e "\nShutting down background processes..."
+    if [ "$DEBUG" = "1" ]; then
+        echo -e "\nShutting down background processes..."
+    fi
     for pid in "${PIDS[@]}"; do
         kill "$pid" 2>/dev/null
     done
@@ -178,19 +208,20 @@ fi
 # llama-server exactly as it does against TurboFieldfareServer.
 if [ "$MODE" = "ask" ] || [ "$MODE" = "chat" ]; then
     # Make sure the server is up for the chat client.
-    if ! curl -s "http://${SERVER_HOST}:${SERVER_PORT}/health" | grep -q "ok"; then
-        echo "-> Launching llama.cpp Server on port $SERVER_PORT..."
+    if ! curl -s "http://${SERVER_HOST}:${SERVER_PORT}/health" | grep -q '"status":"ok"'; then
+        log_info "-> Launching llama.cpp Server on port $SERVER_PORT..."
         "$LLAMA_SERVER" "${LLAMA_COMMON[@]}" --host "$SERVER_HOST" --port "$SERVER_PORT" \
             > "$REPO_DIR/llama_server.log" 2>&1 &
         SERVER_PID=$!
         PIDS+=("$SERVER_PID")
+        log_info "-> Waiting for llama.cpp Server to be ready..."
         for i in $(seq 1 120); do
-            if curl -s -m 2 "http://${SERVER_HOST}:${SERVER_PORT}/health" | grep -q "ok"; then
-                echo "-> llama.cpp Server ready."
+            if curl -s -m 2 "http://${SERVER_HOST}:${SERVER_PORT}/health" | grep -q '"status":"ok"'; then
+                log_info "-> llama.cpp Server ready."
                 break
             fi
             if ! kill -0 $SERVER_PID 2>/dev/null; then
-                echo "ERROR: llama.cpp Server crashed. Check $REPO_DIR/llama_server.log"
+                echo "ERROR: llama.cpp Server crashed. Check $REPO_DIR/llama_server.log" >&2
                 exit 1
             fi
             sleep 1
@@ -198,12 +229,12 @@ if [ "$MODE" = "ask" ] || [ "$MODE" = "chat" ]; then
     fi
 
     if [ "$MODE" = "ask" ]; then
-        echo "-> Asking Gemma 4: $ASK_PROMPT"
+        log_info "-> Asking Gemma 4: $ASK_PROMPT"
         exec python3 "$CHAT_SCRIPT" --ask "$ASK_PROMPT" --no-stream
     fi
 
-    echo "-> Starting interactive chat with Gemma 4..."
-    exec python3 "$CHAT_SCRIPT" --chat
+    log_info "-> Starting interactive chat with Gemma 4..."
+    exec python3 "$CHAT_SCRIPT" --chat "${POSITIONAL_ARGS[@]}"
 fi
 
 # --- Default mode: Pi agent via OpenAI-compatible server -------------------
@@ -238,26 +269,26 @@ if [ ! -f "$PI_MODELS_FILE" ] || ! grep -q "turbofieldfare" "$PI_MODELS_FILE"; t
   }
 }
 EOF
-    echo "-> Wrote $PI_MODELS_FILE"
+    log_info "-> Wrote $PI_MODELS_FILE"
 fi
 
 # 2. Check/Start llama.cpp Server
-if curl -s "http://${SERVER_HOST}:${SERVER_PORT}/health" | grep -q "ok"; then
-    echo "-> llama.cpp Server is already running on port $SERVER_PORT."
+if curl -s "http://${SERVER_HOST}:${SERVER_PORT}/health" | grep -q '"status":"ok"'; then
+    log_info "-> llama.cpp Server is already running on port $SERVER_PORT."
 else
-    echo "-> Launching llama.cpp Server on port $SERVER_PORT..."
+    log_info "-> Launching llama.cpp Server on port $SERVER_PORT..."
     "$LLAMA_SERVER" "${LLAMA_COMMON[@]}" --host "$SERVER_HOST" --port "$SERVER_PORT" \
         > "$REPO_DIR/llama_server.log" 2>&1 &
     SERVER_PID=$!
     PIDS+=("$SERVER_PID")
-    echo "-> Waiting for llama.cpp Server to be ready..."
+    log_info "-> Waiting for llama.cpp Server to be ready..."
     for i in $(seq 1 120); do
-        if curl -s -m 2 "http://${SERVER_HOST}:${SERVER_PORT}/health" | grep -q "ok"; then
-            echo "-> llama.cpp Server ready."
+        if curl -s -m 2 "http://${SERVER_HOST}:${SERVER_PORT}/health" | grep -q '"status":"ok"'; then
+            log_info "-> llama.cpp Server ready."
             break
         fi
         if ! kill -0 $SERVER_PID 2>/dev/null; then
-            echo "ERROR: llama.cpp Server crashed. Check $REPO_DIR/llama_server.log"
+            echo "ERROR: llama.cpp Server crashed. Check $REPO_DIR/llama_server.log" >&2
             exit 1
         fi
         sleep 1
@@ -265,7 +296,7 @@ else
 fi
 
 # 3. Launch Pi Agent
-echo "-> Launching Pi Agent..."
+log_info "-> Launching Pi Agent..."
 export PI_SKIP_VERSION_CHECK=1
 export PI_TELEMETRY=0
-exec pi --model "$PI_MODEL" "$@"
+exec pi --model "$PI_MODEL" "${POSITIONAL_ARGS[@]}"
