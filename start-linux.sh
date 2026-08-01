@@ -197,9 +197,8 @@ LLAMA_COMMON=(
     --temp 0.7
     --repeat-penalty 1.1
 )
-# Only pass the chat template if we have one; llama.cpp ships its own Gemma
-# template as a fallback.
-if [ -f "$CHAT_TEMPLATE" ]; then
+# Only pass custom chat template if explicitly requested via USE_CUSTOM_CHAT_TEMPLATE=1
+if [ "${USE_CUSTOM_CHAT_TEMPLATE:-0}" = "1" ] && [ -f "$CHAT_TEMPLATE" ]; then
     LLAMA_COMMON+=(--chat-template "$CHAT_TEMPLATE")
 fi
 
