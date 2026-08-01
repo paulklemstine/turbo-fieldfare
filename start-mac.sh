@@ -142,9 +142,9 @@ ensure_server_running() {
         PIDS+=("$TURBO_PID")
     fi
 
-    log_info "-> Waiting for TurboFieldfare Server to be ready..."
+    log_info "-> Waiting for TurboFieldfare Server to finish loading and be ready..."
     local ready=0
-    for i in $(seq 1 180); do
+    for i in $(seq 1 600); do
         if curl -s -m 2 "http://127.0.0.1:8080/health" | grep -q '"status":"ok"'; then
             log_info "-> TurboFieldfare Server ready."
             ready=1
@@ -153,6 +153,9 @@ ensure_server_running() {
         if [ -n "${TURBO_PID:-}" ] && ! kill -0 "$TURBO_PID" 2>/dev/null; then
             echo "ERROR: TurboFieldfare crashed. Check $TURBO_DIR/turbo_server.log" >&2
             exit 1
+        fi
+        if [ "$DEBUG" = "1" ] && [ $((i % 15)) -eq 0 ]; then
+            log_info "-> Still loading model... (${i}s elapsed)"
         fi
         sleep 1
     done

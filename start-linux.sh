@@ -208,15 +208,15 @@ ensure_server_running() {
         log_info "-> llama.cpp Server process detected on port $SERVER_PORT."
     else
         log_info "-> Launching llama.cpp Server on port $SERVER_PORT..."
-        "$LLAMA_SERVER" "${LLAMA_COMMON[@]}" --host "$SERVER_HOST" --port "$SERVER_PORT" \
+        stdbuf -oL -eL "$LLAMA_SERVER" "${LLAMA_COMMON[@]}" --host "$SERVER_HOST" --port "$SERVER_PORT" \
             > "$REPO_DIR/llama_server.log" 2>&1 &
         SERVER_PID=$!
         PIDS+=("$SERVER_PID")
     fi
 
-    log_info "-> Waiting for llama.cpp Server to be ready..."
+    log_info "-> Waiting for llama.cpp Server to finish loading and be ready..."
     local ready=0
-    for i in $(seq 1 180); do
+    for i in $(seq 1 600); do
         if curl -s -m 2 "http://${SERVER_HOST}:${SERVER_PORT}/health" | grep -q '"status":"ok"'; then
             log_info "-> llama.cpp Server ready."
             ready=1
@@ -225,6 +225,9 @@ ensure_server_running() {
         if [ -n "${SERVER_PID:-}" ] && ! kill -0 "$SERVER_PID" 2>/dev/null; then
             echo "ERROR: llama.cpp Server crashed. Check $REPO_DIR/llama_server.log" >&2
             exit 1
+        fi
+        if [ "$DEBUG" = "1" ] && [ $((i % 15)) -eq 0 ]; then
+            log_info "-> Still loading model... (${i}s elapsed)"
         fi
         sleep 1
     done
