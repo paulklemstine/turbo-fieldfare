@@ -14,6 +14,10 @@
 #   (no options)     Launch the Pi coding agent (tool use) via the local server
 #   -h, --help       Show this help
 
+NVDRIVER_DIR=$(ls -d /usr/lib/wsl/drivers/nvhm.inf_amd64_* 2>/dev/null | head -n 1)
+if [ -n "$NVDRIVER_DIR" ]; then
+    export LD_LIBRARY_PATH="$NVDRIVER_DIR:/usr/lib/wsl/lib:${LD_LIBRARY_PATH:-}"
+fi
 export PATH="/usr/local/cuda/bin:$HOME/.local/bin:/opt/homebrew/bin:$PATH"
 export LD_LIBRARY_PATH="/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}"
 
@@ -22,12 +26,25 @@ CHAT_SCRIPT="$REPO_DIR/Scripts/chat.py"
 
 # --- Backend location ---------------------------------------------------------
 # llama.cpp checkout. Override if yours lives elsewhere.
-LLAMA_DIR="${LLAMA_DIR:-$HOME/gemmm4gpu/llama.cpp}"
+LLAMA_DIR="${LLAMA_DIR:-$REPO_DIR/../llama.cpp}"
+if [ ! -d "$LLAMA_DIR" ]; then
+    LLAMA_DIR="${LLAMA_DIR:-$HOME/gemmm4gpu/llama.cpp}"
+fi
 
 # --- Model --------------------------------------------------------------------
 # The abliterated Gemma 4 26B-A4B at 4-bit (Q2_K). ~10.7 GB on disk.
 # Override to point at a different GGUF (e.g. a Q3_K_M or Q4_K_M quant).
-MODEL_PATH="${MODEL_PATH:-$REPO_DIR/models/gemma-4-26B-A4B-it-abliterated.Q2_K.gguf}"
+if [ -f "/mnt/e/Models/gemma-4-26B-A4B-it-abliterated.Q2_K.gguf" ]; then
+    DEFAULT_MODEL_PATH="/mnt/e/Models/gemma-4-26B-A4B-it-abliterated.Q2_K.gguf"
+elif [ -f "e:/Models/gemma-4-26B-A4B-it-abliterated.Q2_K.gguf" ]; then
+    DEFAULT_MODEL_PATH="e:/Models/gemma-4-26B-A4B-it-abliterated.Q2_K.gguf"
+elif [ -f "E:/Models/gemma-4-26B-A4B-it-abliterated.Q2_K.gguf" ]; then
+    DEFAULT_MODEL_PATH="E:/Models/gemma-4-26B-A4B-it-abliterated.Q2_K.gguf"
+else
+    DEFAULT_MODEL_PATH="$REPO_DIR/models/gemma-4-26B-A4B-it-abliterated.Q2_K.gguf"
+fi
+
+MODEL_PATH="${MODEL_PATH:-$DEFAULT_MODEL_PATH}"
 CHAT_TEMPLATE="${CHAT_TEMPLATE:-$REPO_DIR/models/chat_template.jinja}"
 
 # --- Tunables for the 6 GB RTX 4050 laptop GPU -------------------------------
@@ -136,7 +153,7 @@ LLAMA_COMMON=(
     -c "$CONTEXT_TOKENS"
     --temp 0.7
     --repeat-penalty 1.1
-    --color
+    --color auto
 )
 # Only pass the chat template if we have one; llama.cpp ships its own Gemma
 # template as a fallback.
