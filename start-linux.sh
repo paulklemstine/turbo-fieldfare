@@ -247,6 +247,7 @@ LLAMA_COMMON=(
     -m "$MODEL_PATH"
     -ngl "$GPU_LAYERS"
     -c "$CONTEXT_TOKENS"
+    -np 1
     --temp 0.7
     --repeat-penalty 1.1
 )
