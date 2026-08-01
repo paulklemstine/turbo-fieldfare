@@ -141,9 +141,12 @@ while [ $# -gt 0 ]; do
 done
 
 detect_gpu_layers() {
-    # Default to CPU mode (0 layers) for fast mmap model loading without PCIe VRAM page thrashing.
-    # Set GPU_LAYERS=15 to force GPU VRAM offloading.
-    echo 0
+    if ! command -v nvidia-smi >/dev/null 2>&1; then
+        echo 0
+        return
+    fi
+    # 10 layers uses ~3.2 GB VRAM, fitting safely in physical GPU VRAM without thrashing
+    echo 10
 }
 
 if [ "$FORCE_CPU" = "1" ]; then
@@ -151,13 +154,8 @@ if [ "$FORCE_CPU" = "1" ]; then
 elif [ -n "${GPU_LAYERS:-}" ]; then
     # Respect explicit user environment override
     :
-elif [ "$FORCE_GPU" = "1" ]; then
-    GPU_LAYERS=$(detect_gpu_layers)
-    if [ "$GPU_LAYERS" = "0" ]; then
-        GPU_LAYERS=16
-    fi
 else
-    # Auto-detect layer count based on free VRAM
+    # Enable GPU assist by default on machines with NVIDIA GPU
     GPU_LAYERS=$(detect_gpu_layers)
 fi
 
@@ -225,6 +223,8 @@ LLAMA_COMMON=(
     -np 1
     --temp 0.6
     --repeat-penalty 1.18
+    -r "<end_of_turn>"
+    --stop "<end_of_turn>"
 )
 # Only pass custom chat template if explicitly requested via USE_CUSTOM_CHAT_TEMPLATE=1
 if [ "${USE_CUSTOM_CHAT_TEMPLATE:-0}" = "1" ] && [ -f "$CHAT_TEMPLATE" ]; then
