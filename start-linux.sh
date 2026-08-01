@@ -232,14 +232,12 @@ log_info "  gpu layers: $GPU_LAYERS  |  context: $CONTEXT_TOKENS  |  port: $SERV
 PIDS=()
 
 cleanup() {
-    code=$?
     if [ "$DEBUG" = "1" ]; then
         echo -e "\nShutting down background processes..."
     fi
     for pid in "${PIDS[@]}"; do
-        kill "$pid" 2>/dev/null
+        kill "$pid" 2>/dev/null || true
     done
-    exit "$code"
 }
 trap cleanup SIGINT SIGTERM EXIT
 
