@@ -250,7 +250,6 @@ LLAMA_COMMON=(
     -np 1
     --temp 0.6
     --repeat-penalty 1.18
-    --chat-template gemma2
 )
 # Only pass custom chat template if explicitly requested via USE_CUSTOM_CHAT_TEMPLATE=1
 if [ "${USE_CUSTOM_CHAT_TEMPLATE:-0}" = "1" ] && [ -f "$CHAT_TEMPLATE" ]; then
