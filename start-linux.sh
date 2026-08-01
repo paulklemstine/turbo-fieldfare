@@ -60,10 +60,9 @@ fi
 MODEL_PATH="${MODEL_PATH:-$DEFAULT_MODEL_PATH}"
 CHAT_TEMPLATE="${CHAT_TEMPLATE:-$REPO_DIR/models/chat_template.jinja}"
 
-# --- Tunables for the 6 GB RTX 4050 laptop GPU -------------------------------
-# Number of transformer layers offloaded to the GPU; the rest run on CPU.
-# Q2_K (~10.7 GB) over 30 layers: -ngl 18 uses ~5.7 GB VRAM + KV headroom.
-GPU_LAYERS="${GPU_LAYERS:-18}"
+# Number of transformer layers offloaded to the GPU; default to 0 for instant CPU startup.
+# Set GPU_LAYERS=18 to offload layers to NVIDIA GPU VRAM.
+GPU_LAYERS="${GPU_LAYERS:-0}"
 CONTEXT_TOKENS="${CONTEXT_TOKENS:-4096}"
 SERVER_PORT="${SERVER_PORT:-8080}"
 SERVER_HOST="127.0.0.1"
