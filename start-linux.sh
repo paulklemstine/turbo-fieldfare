@@ -203,30 +203,43 @@ if [ -f "$CHAT_TEMPLATE" ]; then
     LLAMA_COMMON+=(--chat-template "$CHAT_TEMPLATE")
 fi
 
-# --- Modes that talk directly to the server via the existing chat client ---
-# Scripts/chat.py speaks the OpenAI Chat Completions API, so it works against
-# llama-server exactly as it does against TurboFieldfareServer.
-if [ "$MODE" = "ask" ] || [ "$MODE" = "chat" ]; then
-    # Make sure the server is up for the chat client.
-    if ! curl -s "http://${SERVER_HOST}:${SERVER_PORT}/health" | grep -q '"status":"ok"'; then
+ensure_server_running() {
+    if curl -s -m 2 "http://${SERVER_HOST}:${SERVER_PORT}/health" >/dev/null 2>&1; then
+        log_info "-> llama.cpp Server process detected on port $SERVER_PORT."
+    else
         log_info "-> Launching llama.cpp Server on port $SERVER_PORT..."
         "$LLAMA_SERVER" "${LLAMA_COMMON[@]}" --host "$SERVER_HOST" --port "$SERVER_PORT" \
             > "$REPO_DIR/llama_server.log" 2>&1 &
         SERVER_PID=$!
         PIDS+=("$SERVER_PID")
-        log_info "-> Waiting for llama.cpp Server to be ready..."
-        for i in $(seq 1 120); do
-            if curl -s -m 2 "http://${SERVER_HOST}:${SERVER_PORT}/health" | grep -q '"status":"ok"'; then
-                log_info "-> llama.cpp Server ready."
-                break
-            fi
-            if ! kill -0 $SERVER_PID 2>/dev/null; then
-                echo "ERROR: llama.cpp Server crashed. Check $REPO_DIR/llama_server.log" >&2
-                exit 1
-            fi
-            sleep 1
-        done
     fi
+
+    log_info "-> Waiting for llama.cpp Server to be ready..."
+    local ready=0
+    for i in $(seq 1 180); do
+        if curl -s -m 2 "http://${SERVER_HOST}:${SERVER_PORT}/health" | grep -q '"status":"ok"'; then
+            log_info "-> llama.cpp Server ready."
+            ready=1
+            break
+        fi
+        if [ -n "${SERVER_PID:-}" ] && ! kill -0 "$SERVER_PID" 2>/dev/null; then
+            echo "ERROR: llama.cpp Server crashed. Check $REPO_DIR/llama_server.log" >&2
+            exit 1
+        fi
+        sleep 1
+    done
+
+    if [ "$ready" = "0" ]; then
+        echo "ERROR: Timed out waiting for llama.cpp Server to be ready on port $SERVER_PORT." >&2
+        exit 1
+    fi
+}
+
+# --- Modes that talk directly to the server via the existing chat client ---
+# Scripts/chat.py speaks the OpenAI Chat Completions API, so it works against
+# llama-server exactly as it does against TurboFieldfareServer.
+if [ "$MODE" = "ask" ] || [ "$MODE" = "chat" ]; then
+    ensure_server_running
 
     if [ "$MODE" = "ask" ]; then
         log_info "-> Asking Gemma 4: $ASK_PROMPT"
@@ -273,27 +286,7 @@ EOF
 fi
 
 # 2. Check/Start llama.cpp Server
-if curl -s "http://${SERVER_HOST}:${SERVER_PORT}/health" | grep -q '"status":"ok"'; then
-    log_info "-> llama.cpp Server is already running on port $SERVER_PORT."
-else
-    log_info "-> Launching llama.cpp Server on port $SERVER_PORT..."
-    "$LLAMA_SERVER" "${LLAMA_COMMON[@]}" --host "$SERVER_HOST" --port "$SERVER_PORT" \
-        > "$REPO_DIR/llama_server.log" 2>&1 &
-    SERVER_PID=$!
-    PIDS+=("$SERVER_PID")
-    log_info "-> Waiting for llama.cpp Server to be ready..."
-    for i in $(seq 1 120); do
-        if curl -s -m 2 "http://${SERVER_HOST}:${SERVER_PORT}/health" | grep -q '"status":"ok"'; then
-            log_info "-> llama.cpp Server ready."
-            break
-        fi
-        if ! kill -0 $SERVER_PID 2>/dev/null; then
-            echo "ERROR: llama.cpp Server crashed. Check $REPO_DIR/llama_server.log" >&2
-            exit 1
-        fi
-        sleep 1
-    done
-fi
+ensure_server_running
 
 # 3. Launch Pi Agent
 log_info "-> Launching Pi Agent..."

@@ -132,27 +132,38 @@ EOF
     log_info "-> Wrote $PI_MODELS_FILE"
 fi
 
-# 2. Check/Start TurboFieldfare Server (Port 8080)
-if curl -s "http://127.0.0.1:8080/health" | grep -q '"status":"ok"'; then
-    log_info "-> TurboFieldfare Server is already running on port 8080."
-else
-    log_info "-> Launching TurboFieldfare Server on port 8080..."
-    .build/release/TurboFieldfareServer --model "$MODEL_PATH" --port 8080 > turbo_server.log 2>&1 &
-    TURBO_PID=$!
-    PIDS+=("$TURBO_PID")
+ensure_server_running() {
+    if curl -s -m 2 "http://127.0.0.1:8080/health" >/dev/null 2>&1; then
+        log_info "-> TurboFieldfare Server process detected on port 8080."
+    else
+        log_info "-> Launching TurboFieldfare Server on port 8080..."
+        .build/release/TurboFieldfareServer --model "$MODEL_PATH" --port 8080 > turbo_server.log 2>&1 &
+        TURBO_PID=$!
+        PIDS+=("$TURBO_PID")
+    fi
+
     log_info "-> Waiting for TurboFieldfare Server to be ready..."
-    for i in $(seq 1 120); do
+    local ready=0
+    for i in $(seq 1 180); do
         if curl -s -m 2 "http://127.0.0.1:8080/health" | grep -q '"status":"ok"'; then
             log_info "-> TurboFieldfare Server ready."
+            ready=1
             break
         fi
-        if ! kill -0 $TURBO_PID 2>/dev/null; then
+        if [ -n "${TURBO_PID:-}" ] && ! kill -0 "$TURBO_PID" 2>/dev/null; then
             echo "ERROR: TurboFieldfare crashed. Check $TURBO_DIR/turbo_server.log" >&2
             exit 1
         fi
         sleep 1
     done
-fi
+
+    if [ "$ready" = "0" ]; then
+        echo "ERROR: Timed out waiting for TurboFieldfare Server to be ready on port 8080." >&2
+        exit 1
+    fi
+}
+
+ensure_server_running
 
 # 3. Launch the chosen client
 case "$MODE" in
