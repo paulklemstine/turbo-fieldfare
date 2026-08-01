@@ -262,18 +262,18 @@ ensure_server_running() {
     fi
 
     if ! curl -s -m 2 "http://${SERVER_HOST}:${SERVER_PORT}/health" >/dev/null 2>&1; then
-        echo "-> Launching llama.cpp Server (GPU layers: $GPU_LAYERS)..."
+        log_info "-> Launching llama.cpp Server (GPU layers: $GPU_LAYERS)..."
         stdbuf -oL -eL "$LLAMA_SERVER" "${LLAMA_COMMON[@]}" --host "$SERVER_HOST" --port "$SERVER_PORT" \
             > "$REPO_DIR/llama_server.log" 2>&1 &
         SERVER_PID=$!
         PIDS+=("$SERVER_PID")
     fi
 
-    echo "-> Loading model weights into memory (please wait)..."
+    log_info "-> Loading model weights into memory (please wait)..."
     local ready=0
     for i in $(seq 1 600); do
         if curl -s -m 2 "http://${SERVER_HOST}:${SERVER_PORT}/health" | grep -q '"status":"ok"'; then
-            echo "-> Model ready."
+            log_info "-> Model ready."
             ready=1
             break
         fi
@@ -281,8 +281,8 @@ ensure_server_running() {
             echo "ERROR: llama.cpp Server crashed during startup. Check $REPO_DIR/llama_server.log" >&2
             exit 1
         fi
-        if [ $((i % 10)) -eq 0 ]; then
-            echo "-> Still loading model... (${i}s)"
+        if [ "$DEBUG" = "1" ] && [ $((i % 10)) -eq 0 ]; then
+            log_info "-> Still loading model... (${i}s)"
         fi
         sleep 1
     done
