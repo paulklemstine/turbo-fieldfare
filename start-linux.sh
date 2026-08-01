@@ -26,9 +26,14 @@ CHAT_SCRIPT="$REPO_DIR/Scripts/chat.py"
 
 # --- Backend location ---------------------------------------------------------
 # llama.cpp checkout. Override if yours lives elsewhere.
-LLAMA_DIR="${LLAMA_DIR:-$REPO_DIR/../llama.cpp}"
-if [ ! -d "$LLAMA_DIR" ]; then
-    LLAMA_DIR="${LLAMA_DIR:-$HOME/gemmm4gpu/llama.cpp}"
+if [ -z "${LLAMA_DIR:-}" ]; then
+    if [ -d "$REPO_DIR/llama.cpp" ]; then
+        LLAMA_DIR="$REPO_DIR/llama.cpp"
+    elif [ -d "$REPO_DIR/../llama.cpp" ]; then
+        LLAMA_DIR="$REPO_DIR/../llama.cpp"
+    else
+        LLAMA_DIR="$HOME/gemmm4gpu/llama.cpp"
+    fi
 fi
 
 # --- Model --------------------------------------------------------------------
@@ -153,7 +158,6 @@ LLAMA_COMMON=(
     -c "$CONTEXT_TOKENS"
     --temp 0.7
     --repeat-penalty 1.1
-    --color auto
 )
 # Only pass the chat template if we have one; llama.cpp ships its own Gemma
 # template as a fallback.
