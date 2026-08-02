@@ -97,7 +97,7 @@ This is the spiritual counterpart to the Mac version's expert-streaming trick:
 llama.cpp keeps a small resident core on the GPU and runs the rest on the CPU
 (`-ngl` layers), so the ~10.7 GB model fits in a 6 GB VRAM GPU + system RAM.
 
-### Requirements
+### Requirements (GPU)
 
 - Linux with an NVIDIA GPU (compute capability 8.0+; tested on an RTX 4050 Laptop, 6 GB VRAM)
 - NVIDIA driver 590+ and the CUDA 13.x toolkit
@@ -156,6 +156,56 @@ GPU_LAYERS=15 ./start.sh --chat
 >   /lib/x86_64-linux-gnu/libnvidia-ptxjitcompiler.so.1
 > ```
 
+## Linux (CPU-only, memory-constrained)
+
+On a machine without a GPU and with less RAM than the model size (e.g. 4.8 GB
+RAM for a 14 GB model), a custom llama.cpp binary applies the same
+expert-streaming trick as the Mac version: it keeps the ~1.5 GB **core**
+(attention, shared MLP, norms, embeddings) resident in RAM and releases the
+~12 GB of **expert weight pages** via `MADV_DONTNEED`. Expert weights are then
+loaded on-demand during inference from the page cache (fast) or disk.
+
+This is the `llama-b10219-custom/` binary included in this repo — it's a
+build of llama.cpp b10219 with the `release_expert_memory()` patch. It's
+auto-detected by `start-linux.sh` before searching for other binaries.
+
+### Requirements (CPU-only)
+
+- x86_64 Linux with AVX2 (tested on Intel N150, 4 cores, 5.7 GB RAM)
+- ~15 GB free disk for the Q4_0 model
+- No GPU needed
+
+### Memory savings
+
+| Metric | Without optimization | With MADV_DONTNEED |
+| ------ | ------------------- | ------------------ |
+| Model file size | 13.45 GB | 13.45 GB |
+| RSS (RAM used) | ~14 GB (thrashing) | ~4.5 GB |
+| Expert tensors resident | 12 GB (all 128/layer) | 0 (loaded on-demand) |
+| Core tensors resident | 1.47 GB | 1.47 GB |
+| **Memory savings** | — | **9.6 GB (68%)** |
+
+### Performance
+
+- First generation (cold expert cache): ~0.15-0.83 tok/s (loads 12 GB from disk)
+- Subsequent generations (warm cache): ~0.83-1.0 tok/s
+- Prompt processing: ~0.5-1.0 tok/s
+
+The speed is bounded by disk I/O on first load, then by CPU compute. This is
+the same fundamental tradeoff the Mac version makes: stream experts from
+storage instead of keeping them all resident.
+
+### Launch
+
+```bash
+./start-linux.sh --chat --cpu --threads 4
+./start-linux.sh --ask "What is the capital of France?" --cpu
+```
+
+The `--cpu` flag forces CPU-only mode and applies these optimizations
+automatically: KV cache q8_0, ubatch 256, cpu-strict priority, and thread
+pinning.
+
 ---
 
 ## Model Replacement & Abliterated Model Support
@@ -183,12 +233,14 @@ To use an unquantized model such as `huihui-ai/Huihui-gemma-4-26B-A4B-it-abliter
 | --------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | Model           | Gemma 4 26B-A4B IT, 26B total parameters, about 3.88B active per token                                                   |
 | Weights         | MLX affine 4-bit, group 64; 8-bit router; 4-bit shared and routed experts                                                |
-| Memory          | ~2 GB of weights and 4K KV cache                                                                                         |
+| Memory (Mac)    | ~2 GB of weights and 4K KV cache                                                                                         |
+| Memory (Linux CPU) | ~4.5 GB RSS (1.5 GB core resident + 12 GB experts on-demand via MADV_DONTNEED)                                        |
 | Storage         | About 14.3 GB for the installed text-only model                                                                          |
-| Hardware        | Apple Silicon Mac (8 GB RAM); or Linux + NVIDIA GPU (6 GB+ VRAM)                                                         |
-| Platform        | macOS 26, Metal 4, Swift 6.2; or Linux + CUDA 13.x, llama.cpp                                                           |
+| Hardware        | Apple Silicon Mac (8 GB RAM); Linux + NVIDIA GPU (6 GB+ VRAM); or x86_64 CPU (4+ GB RAM)                                |
+| Platform        | macOS 26, Metal 4, Swift 6.2; Linux + CUDA 13.x or CPU-only, llama.cpp                                                  |
 | M2 measured decode | [5.1-6.3 tok/s](docs/BENCHMARKS.md#m2-measured-decode) on an 8 GB M2 MacBook Air |
 | M5 measured decode | [31-35 tok/s](docs/BENCHMARKS.md#m5-measured-decode) on a 24 GB M5 Pro |
+| Linux CPU decode | ~0.83-1.0 tok/s on an Intel N150 (4.8 GB RAM, MADV_DONTNEED)                                                             |
 
 The measured result is a reference point, not a performance ceiling. Prompt
 length, generated length, page-cache state, and hardware all affect throughput.
