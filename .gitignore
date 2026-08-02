@@ -51,3 +51,6 @@ tmp/
 __pycache__/
 *.pyc
 .venv/
+
+# Pre-built llama.cpp binary with custom MADV_DONTNEED feature
+llama.cpp/

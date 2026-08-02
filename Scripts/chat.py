@@ -23,6 +23,7 @@ def send(messages, args):
         "temperature": args.temperature,
         "max_completion_tokens": args.max_tokens,
         "stream": not args.no_stream,
+        "stop": ["<end_of_turn>"],
     }).encode("utf-8")
     req = urllib.request.Request(
         args.base_url.rstrip("/") + "/chat/completions",
@@ -41,11 +42,13 @@ def send(messages, args):
 
     if args.no_stream:
         data = json.loads(resp.read().decode("utf-8"))
-        reply = data["choices"][0]["message"]["content"]
+        msg = data["choices"][0]["message"]
+        reply = msg.get("content") or msg.get("reasoning_content") or ""
         print(reply)
         return reply
 
     text = ""
+    reasoning = ""
     for raw in resp:
         line = raw.decode("utf-8", errors="replace").strip()
         if not line.startswith("data:"):
@@ -60,13 +63,24 @@ def send(messages, args):
         choices = chunk.get("choices") or []
         if not choices:
             continue
-        content = choices[0].get("delta", {}).get("content")
+        delta = choices[0].get("delta", {})
+        content = delta.get("content")
         if content:
             text += content
             sys.stdout.write(content)
             sys.stdout.flush()
+        rc = delta.get("reasoning_content")
+        if rc:
+            reasoning += rc
     sys.stdout.write("\n")
     sys.stdout.flush()
+    # If the model used a "thinking" architecture and put everything in
+    # reasoning_content, surface that instead of an empty reply.
+    if not text and reasoning:
+        sys.stdout.write(reasoning)
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+        return reasoning
     return text
 
 
