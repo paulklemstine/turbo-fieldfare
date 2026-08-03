@@ -116,9 +116,17 @@ Performance notes (CPU-only):
   norms, embeddings) stays resident in RAM. Expert weights are loaded
   on-demand during inference from the page cache (fast) or disk.
 
-  Expect ~1.0 tok/s generation on an Intel N150 with 4.8 GB RAM.
-  First generation is slower (~0.7 tok/s) due to cold page cache;
-  subsequent generations benefit from warm cache. RSS usage is ~4.4 GB.
+  WSL2 (default 5.7GB RAM limit):
+    ~0.72 tok/s average (warm cache ~0.77 tok/s)
+    First request ~0.66 tok/s (cold cache). RSS ~4.4 GB.
+
+  Windows native (11.7GB RAM):
+    ~3.41 tok/s average (best 4.11 tok/s)
+    4-5x faster than WSL2 due to more available RAM for page cache.
+
+  When running under WSL2, ./start.sh automatically dispatches to
+  start-windows.cmd for native Windows execution (much faster). Use the
+  --wsl flag to force WSL2 native mode (uses MADV_DONTNEED patch).
 
   This mirrors the approach used by TurboFieldfare on Mac: keep the core
   resident, stream experts from disk. The GPU machine will be far faster.
