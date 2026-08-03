@@ -1655,13 +1655,45 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
         }
     }
 
-    // Release expert weight pages from memory after loading.
-    // This must be done before mappings are moved into pimpl->mappings.
-    // It keeps core tensors (attention, shared MLP, norms, embeddings) resident
-    // while marking expert weights as MADV_DONTNEED. Expert weights are then
-    // loaded on-demand during the forward pass from page cache or disk.
-    // This dramatically reduces RAM usage for MoE models on memory-constrained systems.
-    ml.release_expert_memory();
+    // Performance optimization for HDD-based MoE inference:
+    //
+    // The expert access pattern during inference is sequential through layers:
+    // layer 0 experts → layer 1 experts → ... → layer 29 experts, repeat.
+    // Within each layer, we access 8 out of 128 expert "slices" of a 3D tensor.
+    //
+    // Expert tensors are ~3.2 MB each. On HDD, demand paging triggers ~800 page
+    // faults per expert (one per 4KB page), each requiring a ~10ms seek = ~8s per
+    // expert just in seeks. With 240 experts per token, this is catastrophic.
+    //
+    // Solutions:
+    // 1. MADV_SEQUENTIAL: kernel reads ahead and frees pages (bounded RSS)
+    // 2. MADV_DONTNEED: drops pages immediately (forces re-reads, but kernel caches)
+    // 3. ReadAhead: MADV_DONTNEED + readahead() syscall to repopulate page cache
+    //    with bulk I/O (1 seek per expert instead of 800)
+    //
+    // Environment variables:
+    //   LLAMA_EXPERT_MADVISE=0  → No hint (kernel manages naturally)
+    //   LLAMA_EXPERT_MADVISE=1  → MADV_SEQUENTIAL (default)
+    //   LLAMA_EXPERT_MADVISE=2  → MADV_DONTNEED (minimizes RSS)
+    //   LLAMA_EXPERT_MADVISE=3  → ReadAhead: MADV_DONTNEED + readahead() bulk I/O
+    const char * madvise_str = getenv("LLAMA_EXPERT_MADVISE");
+    int madvise_mode = 1;  // default: MADV_SEQUENTIAL
+    if (madvise_str) {
+        madvise_mode = atoi(madvise_str);
+    }
+    if (madvise_mode == 2) {
+        ml.release_expert_memory();  // MADV_DONTNEED
+    } else if (madvise_mode == 1) {
+        ml.mark_expert_sequential();  // MADV_SEQUENTIAL
+    } else if (madvise_mode == 3) {
+        // ReadAhead mode: release expert pages, then repopulate page cache
+        // with bulk I/O via readahead(). This converts 800 seeks per expert
+        // into 1 bulk read, dramatically reducing disk I/O time on HDD.
+        ml.release_expert_memory();  // MADV_DONTNEED first
+        ml.readahead_experts();      // Then bulk-prefetch with readahead()
+    } else {
+        LLAMA_LOG_WARN("%s: no expert memory hint (kernel manages naturally)\n", __func__);
+    }
 
     if (use_mmap_buffer) {
         for (auto & mapping : ml.mappings) {

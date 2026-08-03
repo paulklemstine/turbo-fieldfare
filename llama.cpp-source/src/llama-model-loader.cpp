@@ -14,7 +14,9 @@
 #include <future>
 #include <regex>
 
+#include <fcntl.h>
 #include <sys/mman.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 
 static const size_t kiB = 1024;
@@ -1335,6 +1337,7 @@ void llama_model_loader::init_mappings(bool prefetch, llama_mlocks * mlock_mmaps
     if (use_mmap) {
         mappings.reserve(files.size());
         mmaps_used.reserve(files.size());
+        file_fds.reserve(files.size());
         for (const auto & file : files) {
             bool is_numa = false;
 
@@ -1346,6 +1349,9 @@ void llama_model_loader::init_mappings(bool prefetch, llama_mlocks * mlock_mmaps
                     is_numa = is_numa_fn();
                 }
             }
+
+            // Store file descriptor for readahead() calls later
+            file_fds.emplace_back(file->file_id());
 
             std::unique_ptr<llama_mmap> mapping = std::make_unique<llama_mmap>(file.get(), prefetch ? -1 : 0, is_numa);
             mmaps_used.emplace_back(mapping->size(), 0);
@@ -1750,6 +1756,11 @@ void llama_model_loader::release_expert_memory() {
         // MADV_DONTNEED tells the OS it can free these physical pages.
         // The mapping remains valid - pages are reloaded on access
         // from the page cache (fast) or disk (slower but bounded).
+        //
+        // Note: On HDD systems, callers should consider NOT using this
+        // (via LLAMA_MADV_DONTNEED_EXPERTS=0) to let the kernel retain
+        // expert pages in cache after first access. This dramatically
+        // improves sustained throughput by avoiding repeated disk seeks.
         if (posix_madvise(addr, len, POSIX_MADV_DONTNEED) != 0) {
             LLAMA_LOG_WARN("%s: posix_madvise failed for %s: %s\n", __func__, name.c_str(), strerror(errno));
         } else {
@@ -1759,10 +1770,119 @@ void llama_model_loader::release_expert_memory() {
     }
 
     if (total_released > 0) {
-        LLAMA_LOG_WARN("%s: released %zu expert tensors, %.2f MiB marked as MADV_DONTNEED\n",
+        LLAMA_LOG_WARN("%s: released %d expert tensors, %.2f MiB marked as MADV_DONTNEED\n",
                 __func__, n_experts, total_released / 1024.0 / 1024.0);
         LLAMA_LOG_WARN("%s: core tensors (attention, shared MLP, norms, embeddings) remain resident\n", __func__);
     } else {
         LLAMA_LOG_WARN("%s: no expert tensors found to release\n", __func__);
+    }
+}
+
+void llama_model_loader::mark_expert_sequential() {
+    if (!use_mmap || mappings.empty()) {
+        return;
+    }
+
+    // Identify expert weight tensors by name pattern.
+    std::regex expert_re(R"(blk\.\d+\.ffn_(gate_up_exps|gate_exps|up_exps|down_exps)(_s)?\.(weight|scale))");
+
+    int page_size = sysconf(_SC_PAGESIZE);
+    size_t total_sequential = 0;
+    int n_experts = 0;
+
+    for (const auto & it : weights_map) {
+        const std::string & name = it.first;
+        const llama_tensor_weight & w = it.second;
+
+        if (!std::regex_match(name, expert_re)) {
+            continue;
+        }
+
+        const auto & mapping = mappings.at(w.idx);
+        void * mmap_addr = mapping->addr();
+
+        size_t offset_in_mmap = w.offs;
+        size_t tensor_size = ggml_nbytes(w.tensor);
+
+        // Align to page boundaries
+        size_t page_mask = (size_t)(page_size - 1);
+        size_t start = (offset_in_mmap + page_mask) & ~page_mask;
+        size_t end = (offset_in_mmap + tensor_size) & ~page_mask;
+
+        if (start >= end) {
+            start = offset_in_mmap & ~page_mask;
+            end = start + page_size;
+        }
+
+        size_t len = end - start;
+        void * addr = (uint8_t *) mmap_addr + start;
+
+        // MADV_SEQUENTIAL: kernel reads ahead aggressively and can free pages
+        // after they're consumed. Ideal for streaming access pattern.
+        if (posix_madvise(addr, len, POSIX_MADV_SEQUENTIAL) != 0) {
+            LLAMA_LOG_DEBUG("%s: posix_madvise failed for %s: %s\n", __func__, name.c_str(), strerror(errno));
+        } else {
+            total_sequential += len;
+            n_experts++;
+        }
+    }
+
+    if (n_experts > 0) {
+        LLAMA_LOG_WARN("%s: marked %d expert tensors (%.2f MiB) as MADV_SEQUENTIAL\n",
+                __func__, n_experts, total_sequential / 1024.0 / 1024.0);
+        LLAMA_LOG_WARN("%s: kernel will read-ahead aggressively and free after use\n", __func__);
+    }
+}
+
+void llama_model_loader::readahead_experts() {
+    if (!use_mmap || mappings.empty() || file_fds.empty()) {
+        LLAMA_LOG_DEBUG("%s: skipping (no mmap, no mappings, or no fds)\n", __func__);
+        return;
+    }
+
+    // Identify expert weight tensors by name pattern.
+    std::regex expert_re(R"(blk\.\d+\.ffn_(gate_up_exps|gate_exps|up_exps|down_exps)(_s)?\.(weight|scale))");
+
+    size_t total_readahead = 0;
+    int n_experts = 0;
+
+    // Use readahead() syscall to initiate bulk I/O for each expert tensor.
+    // This tells the kernel to read the entire expert into page cache NOW,
+    // using a single sequential read (1 seek + bulk transfer) instead of
+    // demand paging (800 page faults × 10ms seek each = ~8s per expert on HDD).
+    //
+    // After readahead(), pages are in page cache. When MADV_DONTNEED drops them,
+    // they'll be re-read from cache (fast) rather than disk (slow).
+    // Even better: if the kernel hasn't evicted them yet, inference hits
+    // resident pages with zero I/O.
+    for (const auto & it : weights_map) {
+        const std::string & name = it.first;
+        const llama_tensor_weight & w = it.second;
+
+        if (!std::regex_match(name, expert_re)) {
+            continue;
+        }
+
+        int fd = file_fds.at(w.idx);
+        size_t offset_in_file = w.offs;
+        size_t tensor_size = ggml_nbytes(w.tensor);
+
+        // readahead() initiates asynchronous I/O and returns immediately.
+        // The kernel prefetches the data into page cache in the background.
+        // Signature: ssize_t readahead(int fd, off64_t offset, size_t count);
+        // Use syscall() directly to avoid _GNU_SOURCE header ordering issues.
+        ssize_t ret = syscall(__NR_readahead, fd, (off64_t)offset_in_file, tensor_size);
+        if (ret != 0) {
+            LLAMA_LOG_DEBUG("%s: readahead failed for %s: %s\n", __func__, name.c_str(), strerror(errno));
+        } else {
+            total_readahead += tensor_size;
+            n_experts++;
+        }
+    }
+
+    if (n_experts > 0) {
+        LLAMA_LOG_WARN("%s: initiated readahead for %d expert tensors (%.2f MiB)\n",
+                __func__, n_experts, total_readahead / 1024.0 / 1024.0);
+        LLAMA_LOG_WARN("%s: bulk I/O reduces seeks from ~800 to ~1 per expert on HDD\n", __func__);
     }
 }

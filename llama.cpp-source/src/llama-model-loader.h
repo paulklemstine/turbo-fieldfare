@@ -211,4 +211,21 @@ struct llama_model_loader {
     // keeping only the core (attention, shared MLP, norms, embeddings) resident.
     // Expert weights are then loaded on-demand during the forward pass.
     void release_expert_memory();
+
+    // Mark expert weight pages as MADV_SEQUENTIAL.
+    // This hints the kernel to read-ahead aggressively and free pages after
+    // consumption. Optimal for HDD-based MoE inference where experts are
+    // accessed sequentially through layers but each page is only touched once
+    // per token. Keeps RSS bounded while maximizing read-ahead efficiency.
+    void mark_expert_sequential();
+
+    // Prefetch expert tensors using readahead() syscall.
+    // This initiates bulk I/O for entire expert tensors, which on HDD reduces
+    // seeks from ~800 per expert (page faults) to 1 per expert (sequential read).
+    // Call this AFTER release_expert_memory() to repopulate page cache with
+    // bulk I/O instead of demand paging. Initiates async reads for all experts.
+    void readahead_experts();
+
+    // Store file descriptors for readahead() calls
+    std::vector<int> file_fds;
 };
