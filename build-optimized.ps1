@@ -108,6 +108,22 @@ Set-Location $sourceDir
 $buildPath = "$sourceDir\build"
 New-Item -ItemType Directory -Path $buildPath -Force | Out-Null
 
+# Find clang with full paths (avoids PATH issues)
+$clangPath = ""
+$clangCppPath = ""
+if (Test-Path "C:\Program Files\LLVM\bin\clang.exe") {
+    $clangPath = "C:\Program Files\LLVM\bin\clang.exe"
+    $clangCppPath = "C:\Program Files\LLVM\bin\clang++.exe"
+} elseif (Test-Path "C:\Program Files (x86)\LLVM\bin\clang.exe") {
+    $clangPath = "C:\Program Files (x86)\LLVM\bin\clang.exe"
+    $clangCppPath = "C:\Program Files (x86)\LLVM\bin\clang++.exe"
+}
+if (-not $clangPath) {
+    Write-Host "ERROR: clang.exe not found. LLVM may not be properly installed." -ForegroundColor Red
+    exit 1
+}
+Write-Host "Using clang: $clangPath" -ForegroundColor Green
+
 # Build with all optimizations for N150 (Gracemont / Alder Lake-N):
 #   -DGGML_NATIVE=ON      : -march=native (enable all local CPU features)
 #   -DGGML_AVX_VNNI=ON    : Explicitly enable AVX-VNNI (vpdpbusd for Q4_0 matmul)
@@ -117,8 +133,8 @@ New-Item -ItemType Directory -Path $buildPath -Force | Out-Null
 $cmakeArgs = @(
     "-B", "build",
     "-G", "Ninja",
-    "-DCMAKE_C_COMPILER=clang",
-    "-DCMAKE_CXX_COMPILER=clang++",
+    "-DCMAKE_C_COMPILER=$clangPath",
+    "-DCMAKE_CXX_COMPILER=$clangCppPath",
     "-DGGML_NATIVE=ON",
     "-DGGML_AVX_VNNI=ON",
     "-DGGML_BLAS=ON",
@@ -139,8 +155,8 @@ if ($LASTEXITCODE -ne 0) {
     $cmakeArgs = @(
         "-B", "build",
         "-G", "Ninja",
-        "-DCMAKE_C_COMPILER=clang",
-        "-DCMAKE_CXX_COMPILER=clang++",
+        "-DCMAKE_C_COMPILER=$clangPath",
+        "-DCMAKE_CXX_COMPILER=$clangCppPath",
         "-DGGML_NATIVE=ON",
         "-DGGML_AVX_VNNI=ON",
         "-DGGML_CPU_REPACK=ON",
