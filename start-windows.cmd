@@ -354,13 +354,11 @@ if errorlevel 1 (
         goto :eof
     )
     REM Refresh PATH to include newly installed Node.js
-    where npm >nul 2>&1
-    if errorlevel 1 (
-        if exist "%ProgramFiles%\nodejs" (
-            set "PATH=%PATH%;%ProgramFiles%\nodejs"
-        ) else if exist "%LOCALAPPDATA%\Programs\nodejs" (
-            set "PATH=%PATH%;%LOCALAPPDATA%\Programs\nodejs"
-        )
+    REM winget installs to Program Files by default; add it to PATH
+    if exist "%ProgramFiles%\nodejs\npm.cmd" (
+        set "PATH=%PATH%;%ProgramFiles%\nodejs"
+    ) else if exist "%LOCALAPPDATA%\Programs\nodejs\npm.cmd" (
+        set "PATH=%PATH%;%LOCALAPPDATA%\Programs\nodejs"
     )
 )
 
@@ -375,8 +373,29 @@ if errorlevel 1 (
     goto :eof
 )
 
-echo Pi agent installed. Launching...
-pi --model turbofieldfare/gemma-4-26b-a4b-it
+REM --- Find and launch Pi ---
+REM npm -g installs to %APPDATA%\npm on Windows; ensure it's in PATH
+where pi >nul 2>&1
+if errorlevel 1 (
+    if exist "%APPDATA%\npm\pi.cmd" (
+        set "PATH=%PATH%;%APPDATA%\npm"
+    ) else if exist "%ProgramFiles%\nodejs\pi.cmd" (
+        set "PATH=%PATH%;%ProgramFiles%\nodejs"
+    )
+)
+
+where pi >nul 2>&1
+if not errorlevel 1 (
+    echo Pi agent installed. Launching...
+    pi --model turbofieldfare/gemma-4-26b-a4b-it
+) else (
+    echo.
+    echo ERROR: Pi agent installed but not found in PATH.
+    echo   Try closing and reopening PowerShell, then run:
+    echo   pi --model turbofieldfare/gemma-4-26b-a4b-it
+    echo.
+    echo Server is still running at http://%SERVER_HOST%:%SERVER_PORT%
+)
 goto :eof
 
 :show_help
