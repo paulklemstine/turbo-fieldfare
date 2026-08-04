@@ -146,9 +146,18 @@ $cmakeArgs = @(
 )
 
 Write-Host "CMake arguments: $cmakeArgs" -ForegroundColor DarkGray
-& cmake @cmakeArgs 2>&1 | Tee-Object -FilePath "$buildPath\cmake_config.log"
+$output = & cmake @cmakeArgs 2>&1
+$output | Tee-Object -FilePath "$buildPath\cmake_config.log" | Out-Null
+foreach ($line in $output) {
+    if ($line -match "error|Error|ERROR") {
+        Write-Host $line -ForegroundColor Red
+    }
+}
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "ERROR: CMake configuration failed. Check $buildPath\cmake_config.log" -ForegroundColor Red
+    Write-Host "ERROR: CMake configuration failed. Full output:" -ForegroundColor Red
+    $output | Select-Object -Last 20 | ForEach-Object { Write-Host $_ }
+    Write-Host ""
+    Write-Host "Check $buildPath\cmake_config.log for details." -ForegroundColor Red
 
     # Fallback without BLAS if OpenBLAS not found
     Write-Host "Retrying without BLAS..." -ForegroundColor Yellow
@@ -164,9 +173,16 @@ if ($LASTEXITCODE -ne 0) {
         "-DBUILD_SHARED_LIBS=ON",
         "-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON"
     )
-    & cmake @cmakeArgs 2>&1
+    $output2 = & cmake @cmakeArgs 2>&1
+    $output2 | Tee-Object -FilePath "$buildPath\cmake_config2.log" | Out-Null
+    foreach ($line in $output2) {
+        if ($line -match "error|Error|ERROR") {
+            Write-Host $line -ForegroundColor Red
+        }
+    }
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "ERROR: CMake configuration failed again." -ForegroundColor Red
+        Write-Host "ERROR: CMake configuration failed again. Full output:" -ForegroundColor Red
+        $output2 | Select-Object -Last 20 | ForEach-Object { Write-Host $_ }
         exit 1
     }
 }
