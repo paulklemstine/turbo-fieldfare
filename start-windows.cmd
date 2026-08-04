@@ -126,6 +126,7 @@ set "LLAMA_SERVER=%LLAMA_DIR%\llama-server.exe"
 set "SERVER_HOST=127.0.0.1"
 set "MODE=pi"
 set "ASK_PROMPT="
+set "DEBUG=0"
 
 REM --- Parse arguments ---
 :parse_args
@@ -152,6 +153,11 @@ if /i "%~1"=="--cpu" (
 if /i "%~1"=="--threads" (
     shift
     set "THREADS=%~1"
+    shift
+    goto :parse_args
+)
+if /i "%~1"=="--debug" (
+    set "DEBUG=1"
     shift
     goto :parse_args
 )
@@ -218,9 +224,14 @@ REM --- Start llama-server ---
 echo Launching llama-server ...
 echo Configuration: %LLAMA_OPTS%
 REM Use START /B to launch the server in the background.
-REM Note: Output redirection with START /B causes "Input redirection is not supported"
-REM in some Windows versions, so we skip it - output goes to the console window.
-start "llama-server" /B "%LLAMA_SERVER%" %LLAMA_OPTS%
+REM By default, redirect output to a log file to keep the console clean.
+REM With --debug, output goes to the console window instead.
+if "%DEBUG%"=="1" (
+    echo Debug mode: server output is shown in the console.
+    start "llama-server" /B "%LLAMA_SERVER%" %LLAMA_OPTS%
+) else (
+    start "llama-server" /B "%LLAMA_SERVER%" %LLAMA_OPTS% > "%REPO_DIR%\llama_server.log" 2>&1
+)
 
 REM --- Wait for server to be ready ---
 echo Loading model weights ^(first launch takes ~90s for repack^)...
@@ -294,6 +305,7 @@ echo.
 echo   --ask "PROMPT"   Run a single prompt against the model and print the reply
 echo   --chat           Start an interactive chat session directly with the model
 echo   --cpu            Force CPU-only mode (default)
+echo   --debug          Show llama-server log output in the console (default: off)
 echo   --threads N      CPU threads to use (default: NUMBER_OF_PROCESSORS - 1)
 echo   -h, --help       Show this help
 echo.
