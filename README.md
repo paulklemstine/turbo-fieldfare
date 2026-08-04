@@ -17,13 +17,13 @@
 </p>
 
 <p align="center">
-  <a href="#try-it">Quick start</a> ·
-  <a href="docs/OPENAI_SERVER.md">Local server</a> ·
+  <a href="#quick-start--installation">Quick start</a> ·
+  <a href="#windows-native-intel-n150">Windows native</a> ·
   <a href="docs/BENCHMARKS.md">Benchmarks</a> ·
-  <a href="docs/COMMUNITY_BENCHMARKS.md">Contribute results</a> ·
+  <a href="docs/OPENAI_SERVER.md">Local server</a> ·
   <a href="docs/SYSTEM_DESIGN.md">How it works</a> ·
   <a href="docs/OPTIMIZATION_JOURNEY.md">Experiments</a> ·
-  <a href="docs/IMPLEMENTATION_REFERENCES.md">References</a>
+  <a href="docs/COMMUNITY_BENCHMARKS.md">Contribute results</a>
 </p>
 
 ![TurboFieldfare Mac app generating text with Gemma 4 26B-A4B](docs/assets/turbofieldfare-app.webp)
@@ -156,6 +156,76 @@ GPU_LAYERS=15 ./start.sh --chat
 >   /lib/x86_64-linux-gnu/libnvidia-ptxjitcompiler.so.1
 > ```
 
+## Windows native (Intel N150+)
+
+On Windows native, llama.cpp runs 6.4x faster than WSL2 due to more RAM
+available for the OS page cache. With a custom MSVC-compiled binary using
+**AVX-VNNI** instructions, this reaches **~14.5 tok/s** — a **+133% improvement**
+over the pre-built binary.
+
+### Requirements (Windows)
+
+- Windows 10/11 64-bit (23H2+ recommended)
+- x86_64 CPU with AVX-VNNI (Intel Alder Lake-N or newer)
+- 12 GB+ RAM (for the 14 GB Q4_0 model + repack)
+- Visual Studio 2022 (Community or Professional, "Desktop development with C++")
+- ~30 GB free disk for model + build artifacts
+
+### 1. Clone the repo
+
+```powershell
+git clone https://github.com/paulklemstine/turbo-fieldfare.git
+cd turbo-fieldfare
+```
+
+### 2. Install Visual Studio 2022
+
+Download from https://visualstudio.microsoft.com/downloads/ and select the
+**Desktop development with C++** workload. The build script needs MSVC's `cl.exe`
+and `vcvarsall.bat`.
+
+### 3. Download the model
+
+```powershell
+# Install Hugging Face CLI
+pip install -U huggingface-hub
+
+# Download the Q4_0 model (14.3 GB)
+huggingface-cli download mradermacher/gemma-4-26B-A4B-it-abliterated-GGUF ^
+  gemma-4-26B-A4B-it-abliterated.Q4_0.gguf ^
+  --local-dir C:\Users\Paul\models
+```
+
+### 4. Build the optimized binary
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "build-optimized.ps1"
+```
+
+Build takes 10-30 minutes on N150. See
+[docs/BENCHMARKS.md](docs/BENCHMARKS.md#custom-avx-vnni-build-133-over-pre-built)
+for full build details and expected results by CPU.
+
+### 5. Launch
+
+```powershell
+.\start-windows.cmd                     # Pi coding agent (default)
+.\start-windows.cmd --chat               # Interactive chat
+.\start-windows.cmd --ask "Hello!"       # Single prompt
+.\start-windows.cmd --debug              # Show server logs in console
+```
+
+The launcher auto-detects the model and llama-server.exe. It starts the server
+with these optimal flags:
+```
+-ngl 0 -c 16384 -t 3 -ctk q4_0 -ctv q4_0 -ub 128 -fa on --cpu-strict 1
+```
+
+Server output is hidden to `llama_server.log` by default; use `--debug` to show
+it in the console.
+
+---
+
 ## Linux (CPU-only, memory-constrained)
 
 On a machine without a GPU and with less RAM than the model size (e.g. 4.8 GB
@@ -237,10 +307,12 @@ To use an unquantized model such as `huihui-ai/Huihui-gemma-4-26B-A4B-it-abliter
 | Memory (Linux CPU) | ~4.5 GB RSS (1.5 GB core resident + 12 GB experts on-demand via MADV_DONTNEED)                                        |
 | Storage         | About 14.3 GB for the installed text-only model                                                                          |
 | Hardware        | Apple Silicon Mac (8 GB RAM); Linux + NVIDIA GPU (6 GB+ VRAM); or x86_64 CPU (4+ GB RAM)                                |
-| Platform        | macOS 26, Metal 4, Swift 6.2; Linux + CUDA 13.x or CPU-only, llama.cpp                                                  |
+| Platform        | macOS 26, Metal 4, Swift 6.2; Windows 11 + MSVC 2022; Linux + CUDA 13.x or CPU-only, llama.cpp                         |
 | M2 measured decode | [5.1-6.3 tok/s](docs/BENCHMARKS.md#m2-measured-decode) on an 8 GB M2 MacBook Air |
 | M5 measured decode | [31-35 tok/s](docs/BENCHMARKS.md#m5-measured-decode) on a 24 GB M5 Pro |
 | Linux CPU decode | ~0.83-1.0 tok/s on an Intel N150 (4.8 GB RAM, MADV_DONTNEED)                                                             |
+| Windows decode (pre-built) | ~6.2 tok/s on an Intel N150 (11.7 GB RAM, AVX2 only)                                                               |
+| Windows decode (custom AVX-VNNI) | [~14.5 tok/s](docs/BENCHMARKS.md#cpu-only-intel-n150) on an Intel N150 (MSVC build +133%)                     |
 
 The measured result is a reference point, not a performance ceiling. Prompt
 length, generated length, page-cache state, and hardware all affect throughput.

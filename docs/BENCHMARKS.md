@@ -179,14 +179,125 @@ Key findings from the build process:
 | **LTO** | Link-time optimization (`/LTCG`) adds ~5-10% improvement. |
 | **CPU variant** | MSVC builds `ggml-cpu-alderlake.dll` with `/arch:AVX2 __AVXVNNI__` — automatically selected at runtime on N150. |
 
-To rebuild (requires Visual Studio 2022, CMake, Ninja):
+#### Hardware requirements
 
+| Requirement | Minimum | Recommended |
+| --- | --- | --- |
+| CPU | x86_64 with AVX2 | Intel Alder Lake-N or newer (for AVX-VNNI) |
+| RAM | 8 GB | 12 GB+ (for 14 GB model + repack) |
+| Disk | 30 GB free | SSD strongly preferred |
+| OS | Windows 10/11 64-bit | Windows 11 23H2+ |
+
+#### Software prerequisites
+
+| Tool | Required | Notes |
+| --- | --- | --- |
+| Visual Studio 2022 | Yes | Community, Professional, or BuildTools — "Desktop development with C++" workload |
+| CMake 3.25+ | Yes | Script auto-installs via winget if missing |
+| Ninja | Yes | Script auto-installs via winget if missing |
+| Git | Yes | For cloning llama.cpp source |
+| winget | Yes | Windows 10 1709+ / Windows 11 |
+
+#### Step-by-step: build on another machine
+
+**1. Clone the repo:**
 ```powershell
-cd C:\Users\Paul\turbo-fieldfare; .\build-optimized.ps1
+git clone https://github.com/paulklemstine/turbo-fieldfare.git
+cd turbo-fieldfare
 ```
 
-Build takes 10-30 minutes on N150. The script installs build tools if needed,
-clones/updates llama.cpp at b10242, and deploys to `llama-b10242\` (with backup).
+**2. Install Visual Studio 2022** (if not present):
+- Download from https://visualstudio.microsoft.com/downloads/
+- Workload: **Desktop development with C++**
+- This includes MSVC, Windows SDK, and C++ tools
+
+**3. Place your model** in `C:\Users\<you>\models\`:
+```
+models\gemma-4-26B-A4B-it.Q4_0.gguf   (14.3 GB)
+```
+
+**4. Edit `build-optimized.ps1`** to set your install path:
+```powershell
+$installDir = "C:\Users\<you>\llama-b10242"  # Change this
+```
+
+**5. Edit `start-windows.cmd`** to match your model/install paths:
+```batch
+set "MODEL_DIR=C:\Users\<you>\models"
+set "LLAMA_SERVER_DIR=C:\Users\<you>\llama-b10242"
+```
+
+**6. Run the build** (PowerShell, Admin not required):
+```powershell
+powershell -ExecutionPolicy Bypass -File "build-optimized.ps1"
+```
+Build takes **10-30 minutes** on N150 (faster on better CPUs). The script:
+- Installs CMake/Ninja via winget if missing
+- Clones llama.cpp at b10242 tag
+- Configures with MSVC + AVX2 + AVX-VNNI + OpenMP
+- Builds all 479 targets with Ninja
+- Backs up existing binaries to `llama-b10242\backup_<timestamp>\`
+- Deploys new binaries to your install dir
+
+**7. Verify the build:**
+```powershell
+C:\Users\<you>\llama-b10242\llama-server.exe --version
+```
+Should output: `version: 10242 (...) built with ... for Windows x86_64`
+
+**8. Test with benchmark script:**
+```powershell
+powershell -ExecutionPolicy Bypass -File "bench-flags.ps1"
+```
+
+#### Build configuration details
+
+The script uses these CMake flags:
+```
+-G Ninja                           # Ninja build system (fastest)
+-DCMAKE_C_COMPILER=cl              # MSVC C compiler
+-DCMAKE_CXX_COMPILER=cl            # MSVC C++ compiler
+-DGGML_NATIVE=ON                   # -march=native equivalent (/arch:AVX2)
+-DGGML_AVX=ON                      # Enable AVX
+-DGGML_AVX2=ON                     # Enable AVX2
+-DGGML_AVX_VNNI=ON                 # Enable AVX-VNNI (the key optimization)
+-DGGML_AVX512=OFF                  # Disable AVX-512 (N150 doesn't have it)
+-DGGML_CPU_REPACK=ON               # Weight repacking for faster matmul
+-DGGML_OPENMP=ON                   # Multi-threading support
+-DCMAKE_BUILD_TYPE=Release         # Full optimizations + LTO
+-DBUILD_SHARED_LIBS=ON             # Shared libraries (smaller binaries)
+```
+
+These produce a `ggml-cpu-alderlake.dll` compiled with:
+```
+/arch:AVX2 /DGGML_AVX2 /DGGML_FMA /DGGML_F16C /D__AVXVNNI__ /DGGML_AVX_VNNI
+```
+
+#### Expected results by CPU
+
+| CPU | Pre-built (AVX2 only) | Custom AVX-VNNI build | Improvement |
+| --- | --- | --- | --- |
+| Intel N150 (Gracemont, AVX-VNNI) | ~6.2 tok/s | **~14.5 tok/s** | +133% |
+| Intel 12th+ gen P-core (AVX-VNNI) | ~15-20 tok/s | ~25-30 tok/s | ~50% |
+| AMD Zen 4 (AVX-512 VNNI) | varies | use AVX-512 build instead | — |
+| CPUs without AVX-VNNI | — | No benefit from custom build | 0% |
+
+The custom build only helps on CPUs with **AVX-VNNI** support:
+- Intel Alder Lake-N (N150, N200, N300 series)
+- Intel Alder Lake desktop (12th gen Core, limited AVX-VNNI)
+- Intel Meteor Lake (Core Ultra)
+- Intel Lunar Lake (Core Ultra 200V)
+
+#### Troubleshooting
+
+| Problem | Solution |
+| --- | --- |
+| `ninja: error: failed recompaction: Permission denied` | Kill any stale ninja processes: `Stop-Process -Name ninja -Force` |
+| `unrecognized file format` linker error | Delete `build/` directory fully (stale objects from prior compiler) |
+| `cmake not found` | Script auto-installs via winget, but restart PowerShell first |
+| `ninja not found` | Script auto-installs via winget, but restart PowerShell first |
+| `error: unknown value for --flash-attn` | Your binary is b10242+; use `-fa on` not `-fa` |
+| Slower than pre-built | Check that AVX_VNNI is actually supported on your CPU (cpuid) |
 
 ### Quick start
 
