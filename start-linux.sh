@@ -125,9 +125,17 @@ Performance notes (CPU-only):
     6.4x faster than WSL2 due to more available RAM for page cache.
     Optimal config: repack ON + 3 threads + q4_0 KV + ub 256.
 
+  One-liner (from repo directory):
+    PowerShell:  cd C:\Users\Paul\turbo-fieldfare; .\start-windows.cmd
+    WSL2:        ./start.sh
+
   When running under WSL2, ./start.sh automatically dispatches to
   start-windows.cmd for native Windows execution (much faster). Use the
   --wsl flag to force WSL2 native mode (uses MADV_DONTNEED patch).
+
+  start-windows.cmd auto-detects the model and llama-server.exe. If Pi (or
+  Node.js) is not installed, it offers to install them. Pass --debug to
+  show llama-server log output (default: hidden to llama_server.log).
 
   This mirrors the approach used by TurboFieldfare on Mac: keep the core
   resident, stream experts from disk. The GPU machine will be far faster.

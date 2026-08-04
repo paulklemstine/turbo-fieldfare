@@ -159,19 +159,53 @@ These configurations were tested, each with a warmup + 5 measured requests:
 First launch with repack takes ~90 seconds (reorganizes and writes repacked
 weights to disk). Subsequent launches reuse those weights and start faster.
 
-### Reproduce
+### Quick start
+
+From Windows PowerShell (one-liner, run from the repo directory):
 
 ```powershell
-# Windows PowerShell
-$env:MODEL_PATH = "C:\Users\Paul\models\gemma-4-26B-A4B-it.Q4_0.gguf"
-$env:LLAMA_DIR = "C:\Users\Paul\llama-b10242"
-.\start-windows.cmd --ask "What is the capital of France?"
+cd C:\Users\Paul\turbo-fieldfare; .\start-windows.cmd
 ```
 
-Or from WSL2 Ubuntu (auto-dispatches to Windows native):
+This starts the server with optimal settings and launches the Pi coding agent.
+The script auto-detects the model GGUF and llama-server.exe. If Pi (or Node.js)
+is not installed, it offers to install them automatically.
+
+Other modes:
+
+```powershell
+cd C:\Users\Paul\turbo-fieldfare; .\start-windows.cmd --ask "What is the capital of France?"
+cd C:\Users\Paul\turbo-fieldfare; .\start-windows.cmd --chat
+cd C:\Users\Paul\turbo-fieldfare; .\start-windows.cmd --debug
+cd C:\Users\Paul\turbo-fieldfare; .\start-windows.cmd --threads 3
+```
+
+From WSL2 Ubuntu (auto-dispatches to Windows native):
 
 ```bash
-./start.sh --ask "What is the capital of France?"
+./start.sh
+```
+
+Use `--wsl` to force WSL2 native mode instead of dispatching to Windows:
+
+```bash
+./start.sh --wsl
+```
+
+### Server output
+
+By default, llama-server output is redirected to `llama_server.log` in the
+script directory. Use `--debug` to show server output in the console instead.
+
+### Environment overrides
+
+```powershell
+$env:MODEL_PATH = "C:\path\to\model.gguf"
+$env:LLAMA_DIR = "C:\path\to\llama.cpp\build\bin"
+$env:CONTEXT_TOKENS = "512"
+$env:SERVER_PORT = "8080"
+$env:THREADS = "3"
+.\start-windows.cmd
 ```
 
 ## Reproduce and contribute a result
