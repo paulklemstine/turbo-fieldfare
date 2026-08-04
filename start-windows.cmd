@@ -399,23 +399,28 @@ if exist "%APPDATA%\npm\node_modules\@earendil-works\pi-coding-agent\bin\pi" (
     )
 )
 
-if defined PI_SCRIPT (
-    echo Pi agent installed. Launching...
-    "!NODE_DIR!\node" "!PI_SCRIPT!" --model turbofieldfare/gemma-4-26b-a4b-it
-) else (
-    REM Fallback: try pi command (may work if PATH is set right)
-    where pi >nul 2>&1
-    if not errorlevel 1 (
-        echo Pi agent installed. Launching...
+REM --- Launch Pi ---
+REM npm installs pi as a PowerShell script (pi.ps1). If execution policy
+REM blocks it, set RemoteSigned for the current user and retry.
+echo Pi agent installed. Launching...
+where pi >nul 2>&1
+if not errorlevel 1 (
+    pi --model turbofieldfare/gemma-4-26b-a4b-it
+    if errorlevel 1 (
+        echo.
+        echo PowerShell execution policy may be blocking pi.
+        echo Attempting to fix and retry...
+        echo.
+        powershell -Command "Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force"
         pi --model turbofieldfare/gemma-4-26b-a4b-it
-    ) else (
-        echo.
-        echo ERROR: Pi agent installed but entry point not found.
-        echo   Try closing and reopening PowerShell, then run:
-        echo   pi --model turbofieldfare/gemma-4-26b-a4b-it
-        echo.
-        echo Server is still running at http://%SERVER_HOST%:%SERVER_PORT%
     )
+) else (
+    echo.
+    echo ERROR: Pi agent installed but not found in PATH.
+    echo   Try closing and reopening PowerShell, then run:
+    echo   pi --model turbofieldfare/gemma-4-26b-a4b-it
+    echo.
+    echo Server is still running at http://%SERVER_HOST%:%SERVER_PORT%
 )
 goto :eof
 
