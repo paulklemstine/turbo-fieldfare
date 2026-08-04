@@ -132,7 +132,7 @@ Benchmarking 15+ configurations on Windows native found these optimums:
 | KV cache | **q4_0** | Less memory bandwidth than q8_0: +5% speed |
 | Micro-batch (ub) | **256** | Lower peak memory than 512 |
 | CPU strict | **1** | Pin threads to cores: consistent latency |
-| Context | **512** | Sufficient for most agent prompts |
+| Context | **16384** | Full context window (benchmarked on N150: fits in 11.7GB RAM with q4_0 KV) |
 
 The optimal config achieves ~4.8 tok/s warm (after the first few tokens),
 compared to the baseline ~2.92 tok/s (no repack, 4 threads, q8_0 KV).

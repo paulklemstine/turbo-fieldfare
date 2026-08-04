@@ -118,7 +118,7 @@ if not defined MODEL_PATH (
 )
 :found_model
 
-if not defined CONTEXT_TOKENS set "CONTEXT_TOKENS=512"
+if not defined CONTEXT_TOKENS set "CONTEXT_TOKENS=16384"
 if not defined SERVER_PORT set "SERVER_PORT=8080"
 if not defined GPU_LAYERS set "GPU_LAYERS=0"
 
