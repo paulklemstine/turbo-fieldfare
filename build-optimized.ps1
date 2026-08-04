@@ -146,12 +146,15 @@ $cmakeArgs = @(
 )
 
 Write-Host "CMake arguments: $cmakeArgs" -ForegroundColor DarkGray
-# Use cmd.exe to avoid PowerShell treating CMake stderr as errors
-$cmakeCmd = "cmake $(($cmakeArgs | ForEach-Object { "`"$_`"" }) -join ' ') > `"$buildPath\cmake_config.log`" 2>&1"
-cmd.exe /c $cmakeCmd
-if ($LASTEXITCODE -ne 0) {
+# Use a CMake response file to avoid PowerShell quote escaping nightmares
+$argFile = "$buildPath\cmake_args.rsp"
+$cmakeArgs | Out-File -FilePath $argFile -Encoding ASCII
+$logFile = "$buildPath\cmake_config.log"
+Write-Host "Running: cmake @$argFile > $logFile 2>&1" -ForegroundColor DarkGray
+$process = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "cmake", "@`"$argFile`"", ">", "`"$logFile`"", "2>&1" -Wait -NoNewWindow -PassThru
+if ($process.ExitCode -ne 0) {
     Write-Host "ERROR: CMake configuration failed. Last 30 lines:" -ForegroundColor Red
-    Get-Content "$buildPath\cmake_config.log" -Tail 30 | ForEach-Object { Write-Host $_ }
+    Get-Content $logFile -Tail 30 | ForEach-Object { Write-Host $_ }
 
     # Fallback without BLAS if OpenBLAS not found
     Write-Host ""
@@ -168,11 +171,13 @@ if ($LASTEXITCODE -ne 0) {
         "-DBUILD_SHARED_LIBS=ON",
         "-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON"
     )
-    $cmakeCmd = "cmake $(($cmakeArgs | ForEach-Object { "`"$_`"" }) -join ' ') > `"$buildPath\cmake_config2.log`" 2>&1"
-    cmd.exe /c $cmakeCmd
-    if ($LASTEXITCODE -ne 0) {
+    $argFile = "$buildPath\cmake_args2.rsp"
+    $cmakeArgs | Out-File -FilePath $argFile -Encoding ASCII
+    $logFile = "$buildPath\cmake_config2.log"
+    $process = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "cmake", "@`"$argFile`"", ">", "`"$logFile`"", "2>&1" -Wait -NoNewWindow -PassThru
+    if ($process.ExitCode -ne 0) {
         Write-Host "ERROR: CMake configuration failed again. Last 30 lines:" -ForegroundColor Red
-        Get-Content "$buildPath\cmake_config2.log" -Tail 30 | ForEach-Object { Write-Host $_ }
+        Get-Content $logFile -Tail 30 | ForEach-Object { Write-Host $_ }
         exit 1
     }
 }
@@ -181,11 +186,12 @@ Write-Host "CMake configuration complete" -ForegroundColor Green
 # --- Step 6: Build ---
 Write-Host "Building (this takes 10-30 minutes)..." -ForegroundColor Yellow
 Set-Location $sourceDir
+$buildLog = "$buildPath\build.log"
 Write-Host "Building with: cmake --build build --config Release -j 4" -ForegroundColor DarkGray
-cmd.exe /c 'cmake --build build --config Release -j 4 > "$buildPath\build.log" 2>&1'
-if ($LASTEXITCODE -ne 0) {
+$process = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "cmake", "--build", "build", "--config", "Release", "-j", "4", ">", "`"$buildLog`"", "2>&1" -Wait -NoNewWindow -PassThru
+if ($process.ExitCode -ne 0) {
     Write-Host "ERROR: Build failed. Last 30 lines:" -ForegroundColor Red
-    Get-Content "$buildPath\build.log" -Tail 30 | ForEach-Object { Write-Host $_ }
+    Get-Content $buildLog -Tail 30 | ForEach-Object { Write-Host $_ }
     exit 1
 }
 Write-Host "Build complete!" -ForegroundColor Green
