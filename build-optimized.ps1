@@ -67,7 +67,27 @@ if (-not $ninja) {
 }
 Write-Host "ninja found: $(ninja --version)" -ForegroundColor Green
 
-# --- Step 3: Clone llama.cpp ---
+# --- Step 3: Install CMake ---
+Write-Host "Checking for CMake..." -ForegroundColor Yellow
+$cmake = Get-Command cmake -ErrorAction SilentlyContinue
+if (-not $cmake) {
+    Write-Host "Installing CMake via winget..." -ForegroundColor Yellow
+    winget install Kitware.CMake --accept-source-agreements --accept-package-agreements --silent
+    $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "User") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "Machine")
+    $cmake = Get-Command cmake -ErrorAction SilentlyContinue
+    if (-not $cmake) {
+        if (Test-Path "C:\Program Files\CMake\bin\cmake.exe") {
+            $env:PATH = "C:\Program Files\CMake\bin;" + $env:PATH
+            Write-Host "Added C:\Program Files\CMake\bin to PATH" -ForegroundColor Green
+        } else {
+            Write-Host "ERROR: CMake install failed. Restart PowerShell and re-run." -ForegroundColor Red
+            exit 1
+        }
+    }
+}
+Write-Host "cmake found: $(cmake --version | Select-Object -First 1)" -ForegroundColor Green
+
+# --- Step 4: Clone llama.cpp ---
 Write-Host "Cloning llama.cpp ($branch)..." -ForegroundColor Yellow
 if (-not (Test-Path $sourceDir)) {
     New-Item -ItemType Directory -Path $buildDir -Force | Out-Null
@@ -82,7 +102,7 @@ if (-not (Test-Path $sourceDir)) {
 }
 Write-Host "llama.cpp ready" -ForegroundColor Green
 
-# --- Step 4: Configure with CMake ---
+# --- Step 5: Configure with CMake ---
 Write-Host "Configuring build with optimizations..." -ForegroundColor Yellow
 Set-Location $sourceDir
 $buildPath = "$sourceDir\build"
@@ -136,7 +156,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "CMake configuration complete" -ForegroundColor Green
 
-# --- Step 5: Build ---
+# --- Step 6: Build ---
 Write-Host "Building (this takes 10-30 minutes)..." -ForegroundColor Yellow
 Set-Location $sourceDir
 cmake --build build --config Release -j 4 2>&1 | Tee-Object -FilePath "$buildPath\build.log"
@@ -146,7 +166,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "Build complete!" -ForegroundColor Green
 
-# --- Step 6: Deploy ---
+# --- Step 7: Deploy ---
 Write-Host "Deploying to $installDir..." -ForegroundColor Yellow
 # Copy new binaries over the old ones
 $binDir = "$sourceDir\build\bin"
