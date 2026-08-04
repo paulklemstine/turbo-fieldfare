@@ -130,7 +130,8 @@ Benchmarking 15+ configurations on Windows native found these optimums:
 | Repack | **ON** (default) | Reorganizes weights for faster matmul: +45% speed |
 | Threads | **3** on 4-core CPU | Leaves 1 core for OS/disk I/O |
 | KV cache | **q4_0** | Less memory bandwidth than q8_0: +5% speed |
-| Micro-batch (ub) | **256** | Lower peak memory than 512 |
+| Micro-batch (ub) | **128** | Best throughput with Flash Attention |
+| Flash Attention | **-fa** (enabled) | 2x speedup at 16K context by avoiding full attention matrix |
 | CPU strict | **1** | Pin threads to cores: consistent latency |
 | Context | **16384** | Full context window (benchmarked on N150: fits in 11.7GB RAM with q4_0 KV) |
 
