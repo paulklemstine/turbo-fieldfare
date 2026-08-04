@@ -345,24 +345,56 @@ if /i "%INSTALL_PI%"=="n" (
     goto :eof
 )
 
+REM --- Check for npm (needed to install Pi) ---
+where npm >nul 2>&1
+if errorlevel 1 (
+    echo npm is not installed. Node.js is required to install Pi agent.
+    echo.
+    set /p "INSTALL_NODE=Install Node.js (includes npm) via winget? (Y/n): "
+    if /i "%INSTALL_NODE%"=="n" (
+        echo Skipping. Server is running at http://%SERVER_HOST%:%SERVER_PORT%
+        goto :eof
+    )
+    echo.
+    echo Installing Node.js (this may take a minute)...
+    call winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements --silent
+    if errorlevel 1 (
+        echo.
+        echo ERROR: winget install failed. Install Node.js manually:
+        echo   https://nodejs.org/
+        echo   Then re-run this script.
+        echo.
+        echo Server is still running at http://%SERVER_HOST%:%SERVER_PORT%
+        goto :eof
+    )
+    echo.
+    echo Node.js installed. Refreshing PATH...
+    REM Refresh PATH to include newly installed Node.js
+    for /f "tokens=*" %%i in ('where npm') do set "PATH=%PATH%;%%~dpi" 2>nul
+    REM If where still fails, try the default install location
+    where npm >nul 2>&1
+    if errorlevel 1 (
+        if exist "%ProgramFiles%\nodejs" (
+            set "PATH=%PATH%;%ProgramFiles%\nodejs"
+        ) else if exist "%LOCALAPPDATA%\Programs\nodejs" (
+            set "PATH=%PATH%;%LOCALAPPDATA%\Programs\nodejs"
+        )
+    )
+)
+
 echo.
-echo Installing Pi agent via npm...
-echo   npm install -g --ignore-scripts @earendil-works/pi-coding-agent
-echo.
-call npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+echo Installing Pi agent (this may take a minute)...
+call npm install -g --ignore-scripts @earendil-works/pi-coding-agent >nul 2>&1
 if errorlevel 1 (
     echo.
-    echo ERROR: npm install failed. Make sure Node.js is installed.
-    echo   Download from https://nodejs.org/
-    echo   Then re-run this script.
+    echo ERROR: npm install failed. Try installing manually:
+    echo   npm install -g --ignore-scripts @earendil-works/pi-coding-agent
     echo.
     echo Server is still running at http://%SERVER_HOST%:%SERVER_PORT%
     goto :eof
 )
 
-echo.
 echo Pi agent installed. Launching...
-echo.
 pi --model turbofieldfare/gemma-4-26b-a4b-it
 goto :eof
 
