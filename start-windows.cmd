@@ -336,27 +336,13 @@ if not errorlevel 1 (
     goto :eof
 )
 
-REM --- Pi not found: offer to install ---
-echo Pi agent is not installed on this system.
-echo.
-set /p "INSTALL_PI=Install Pi agent now? (Y/n): "
-if /i "%INSTALL_PI%"=="n" (
-    echo Skipping. Server is running at http://%SERVER_HOST%:%SERVER_PORT%
-    goto :eof
-)
+REM --- Pi not found: auto-install ---
+echo Pi agent is not installed. Installing automatically...
 
 REM --- Check for npm (needed to install Pi) ---
 where npm >nul 2>&1
 if errorlevel 1 (
-    echo npm is not installed. Node.js is required to install Pi agent.
-    echo.
-    set /p "INSTALL_NODE=Install Node.js (includes npm) via winget? (Y/n): "
-    if /i "%INSTALL_NODE%"=="n" (
-        echo Skipping. Server is running at http://%SERVER_HOST%:%SERVER_PORT%
-        goto :eof
-    )
-    echo.
-    echo Installing Node.js (this may take a minute)...
+    echo npm not found. Installing Node.js via winget...
     call winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements --silent
     if errorlevel 1 (
         echo.
@@ -367,11 +353,7 @@ if errorlevel 1 (
         echo Server is still running at http://%SERVER_HOST%:%SERVER_PORT%
         goto :eof
     )
-    echo.
-    echo Node.js installed. Refreshing PATH...
     REM Refresh PATH to include newly installed Node.js
-    for /f "tokens=*" %%i in ('where npm') do set "PATH=%PATH%;%%~dpi" 2>nul
-    REM If where still fails, try the default install location
     where npm >nul 2>&1
     if errorlevel 1 (
         if exist "%ProgramFiles%\nodejs" (
@@ -382,8 +364,7 @@ if errorlevel 1 (
     )
 )
 
-echo.
-echo Installing Pi agent (this may take a minute)...
+echo Installing Pi agent via npm...
 call npm install -g --ignore-scripts @earendil-works/pi-coding-agent >nul 2>&1
 if errorlevel 1 (
     echo.
