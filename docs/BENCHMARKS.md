@@ -15,7 +15,8 @@ Decode rate excludes model installation, model loading, and prompt prefill.
 | Host and runtime | Decode rate | Reported memory |
 | --- | ---: | ---: |
 | Intel N150 (800MHz, 4c/4t), WSL2 native | ~0.72 tok/s | ~4.4 GB RSS |
-| Intel N150 (800MHz, 4c/4t), Windows native | ~4.61 tok/s warm | ~11.7 GB RAM |
+| Intel N150 (800MHz, 4c/4t), Windows native (pre-built b10242) | ~6.23 tok/s | ~11.7 GB RAM |
+| Intel N150 (800MHz, 4c/4t), Windows native (custom AVX-VNNI build) | **~14.56 tok/s** | ~11.7 GB RAM |
 | 8 GB M2, TurboFieldfare | 5.10-6.30 tok/s | ~1.9-2.1 GB footprint |
 | 24 GB M5 Pro, TurboFieldfare | 31-35 tok/s | ~2.1 GB footprint |
 | 24 GB M5 Pro, mlx-lm | 76.33-82.07 tok/s | 8.3-9.8 GB RSS; 14.7-15.3 GB GPU allocation |
@@ -131,12 +132,14 @@ Benchmarking 15+ configurations on Windows native found these optimums:
 | Threads | **3** on 4-core CPU | Leaves 1 core for OS/disk I/O |
 | KV cache | **q4_0** | Less memory bandwidth than q8_0: +5% speed |
 | Micro-batch (ub) | **128** | Best throughput with Flash Attention |
-| Flash Attention | **-fa** (enabled) | 2x speedup at 16K context by avoiding full attention matrix |
+| Flash Attention | **-fa on** (enabled) | 2-2.5x speedup at 16K context (b10242 syntax: `-fa on` not `-fa`) |
 | CPU strict | **1** | Pin threads to cores: 23% speedup (5.04 → 6.23 tok/s) |
 | Context | **16384** | Full context window (benchmarked on N150: fits in 11.7GB RAM with q4_0 KV) |
+| Binary | **Custom MSVC build** | AVX-VNNI instructions: +133% over pre-built (6.23 → 14.56 tok/s) |
 
-The optimal config achieves ~4.8 tok/s warm (after the first few tokens),
-compared to the baseline ~2.92 tok/s (no repack, 4 threads, q8_0 KV).
+The custom MSVC-compiled binary with AVX-VNNI achieves **~14.56 tok/s** steady-state
+(10-request average), a **133.7% improvement** over the pre-built b10242 binary (6.23 tok/s).
+Compared to the baseline ~2.92 tok/s (no repack, 4 threads, q8_0 KV), that's a **5x speedup**.
 
 ### Benchmark matrix
 
@@ -159,6 +162,31 @@ These configurations were tested, each with a warmup + 5 measured requests:
 
 First launch with repack takes ~90 seconds (reorganizes and writes repacked
 weights to disk). Subsequent launches reuse those weights and start faster.
+
+### Custom AVX-VNNI build (+133% over pre-built)
+
+The pre-built b10242 binary (6.23 tok/s) is compiled with MSVC using `/arch:AVX2`.
+Rebuilding from source with **AVX-VNNI** (`vpdpbusd` instruction for 4-way INT8 dot
+product) and proper ISA flags yields **14.56 tok/s** steady-state — a **133.7% improvement**.
+
+Key findings from the build process:
+
+| Factor | Finding |
+| --- | --- |
+| **Compiler** | MSVC generates superior code for AVX-VNNI on Gracemont (N150). Clang 22 builds were 48-52% slower. |
+| **ISA flags** | Must enable `GGML_AVX=ON` + `GGML_AVX2=ON` + `GGML_AVX_VNNI=ON` together. CMake can set AVX=OFF when only AVX_VNNI is passed. |
+| **OpenMP** | Critical for multi-threaded matmul. Must be enabled (MSVC: `-openmp`). Without it, performance drops ~50%. |
+| **LTO** | Link-time optimization (`/LTCG`) adds ~5-10% improvement. |
+| **CPU variant** | MSVC builds `ggml-cpu-alderlake.dll` with `/arch:AVX2 __AVXVNNI__` — automatically selected at runtime on N150. |
+
+To rebuild (requires Visual Studio 2022, CMake, Ninja):
+
+```powershell
+cd C:\Users\Paul\turbo-fieldfare; .\build-optimized.ps1
+```
+
+Build takes 10-30 minutes on N150. The script installs build tools if needed,
+clones/updates llama.cpp at b10242, and deploys to `llama-b10242\` (with backup).
 
 ### Quick start
 

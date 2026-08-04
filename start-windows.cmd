@@ -211,13 +211,14 @@ REM Optimal config for CPU-only inference on HDD-based systems:
 REM   - repack ON: reorganizes weights for 45% faster matmul (needs sufficient RAM)
 REM   - auto threads: physical cores - 1 (leaves 1 core for OS/disk I/O)
 REM   - q4_0 KV cache: less memory bandwidth than q8_0
-REM   - ub 256: lower peak memory than 512
+REM   - ub 128: optimal micro-batch with Flash Attention
+REM   - fa on: Flash Attention (2-2.5x at 16K context, b10242 syntax)
 REM   - cpu-strict 1: pin threads to cores (consistent latency)
-set "LLAMA_OPTS=-m "%MODEL_PATH%" -ngl %GPU_LAYERS% -c %CONTEXT_TOKENS% -t %THREADS% --cpu-strict 1 --host %SERVER_HOST% --port %SERVER_PORT%"
+set "LLAMA_OPTS=-m "%MODEL_PATH%" -ngl %GPU_LAYERS% -c %CONTEXT_TOKENS% -t %THREADS% --host %SERVER_HOST% --port %SERVER_PORT%"
 
 REM --- CPU optimization flags ---
 if "%GPU_LAYERS%"=="0" (
-    set "LLAMA_OPTS=!LLAMA_OPTS! -ctk q4_0 -ctv q4_0 -ub 128 -fa --cpu-strict 1"
+    set "LLAMA_OPTS=!LLAMA_OPTS! -ctk q4_0 -ctv q4_0 -ub 128 -fa on --cpu-strict 1"
 )
 
 REM --- Start llama-server ---
