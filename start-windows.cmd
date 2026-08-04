@@ -343,7 +343,8 @@ REM --- Check for npm (needed to install Pi) ---
 where npm >nul 2>&1
 if errorlevel 1 (
     echo npm not found. Installing Node.js via winget...
-    call winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements --silent
+    REM --force reinstalls even if already present (fixes broken installs)
+    call winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements --silent --force
     if errorlevel 1 (
         echo.
         echo ERROR: winget install failed. Install Node.js manually:
@@ -353,13 +354,15 @@ if errorlevel 1 (
         echo Server is still running at http://%SERVER_HOST%:%SERVER_PORT%
         goto :eof
     )
-    REM Refresh PATH to include newly installed Node.js
-    REM winget installs to Program Files by default; add it to PATH
-    if exist "%ProgramFiles%\nodejs\npm.cmd" (
-        set "PATH=%PATH%;%ProgramFiles%\nodejs"
-    ) else if exist "%LOCALAPPDATA%\Programs\nodejs\npm.cmd" (
-        set "PATH=%PATH%;%LOCALAPPDATA%\Programs\nodejs"
-    )
+)
+
+REM --- Ensure Node.js is in PATH ---
+REM Add common install locations unconditionally (harmless if already present)
+if exist "%ProgramFiles%\nodejs\node.exe" (
+    set "PATH=%PATH%;%ProgramFiles%\nodejs"
+)
+if exist "%LOCALAPPDATA%\Programs\nodejs\node.exe" (
+    set "PATH=%PATH%;%LOCALAPPDATA%\Programs\nodejs"
 )
 
 echo Installing Pi agent via npm...
@@ -373,15 +376,10 @@ if errorlevel 1 (
     goto :eof
 )
 
-REM --- Find and launch Pi ---
-REM npm -g installs to %APPDATA%\npm on Windows; ensure it's in PATH
-where pi >nul 2>&1
-if errorlevel 1 (
-    if exist "%APPDATA%\npm\pi.cmd" (
-        set "PATH=%PATH%;%APPDATA%\npm"
-    ) else if exist "%ProgramFiles%\nodejs\pi.cmd" (
-        set "PATH=%PATH%;%ProgramFiles%\nodejs"
-    )
+REM --- Ensure npm global bin is in PATH ---
+REM npm -g installs to %APPDATA%\npm on Windows
+if exist "%APPDATA%\npm\pi.cmd" (
+    set "PATH=%PATH%;%APPDATA%\npm"
 )
 
 where pi >nul 2>&1
