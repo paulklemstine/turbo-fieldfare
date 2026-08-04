@@ -333,10 +333,37 @@ set PI_TELEMETRY=0
 where pi >nul 2>&1
 if not errorlevel 1 (
     pi --model turbofieldfare/gemma-4-26b-a4b-it
-) else (
-    echo Pi agent not found in PATH. Server is running at http://%SERVER_HOST%:%SERVER_PORT%
-    echo Install Pi agent or use any OpenAI-compatible client to send requests.
+    goto :eof
 )
+
+REM --- Pi not found: offer to install ---
+echo Pi agent is not installed on this system.
+echo.
+set /p "INSTALL_PI=Install Pi agent now? (Y/n): "
+if /i "%INSTALL_PI%"=="n" (
+    echo Skipping. Server is running at http://%SERVER_HOST%:%SERVER_PORT%
+    goto :eof
+)
+
+echo.
+echo Installing Pi agent via npm...
+echo   npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+echo.
+call npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+if errorlevel 1 (
+    echo.
+    echo ERROR: npm install failed. Make sure Node.js is installed.
+    echo   Download from https://nodejs.org/
+    echo   Then re-run this script.
+    echo.
+    echo Server is still running at http://%SERVER_HOST%:%SERVER_PORT%
+    goto :eof
+)
+
+echo.
+echo Pi agent installed. Launching...
+echo.
+pi --model turbofieldfare/gemma-4-26b-a4b-it
 goto :eof
 
 :show_help
