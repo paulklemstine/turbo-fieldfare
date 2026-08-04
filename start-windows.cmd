@@ -288,13 +288,55 @@ if "%MODE%"=="chat" (
     goto :eof
 )
 
-REM --- Default mode: just leave server running ---
+REM --- Default mode: start server, then launch Pi agent ---
 echo.
 echo Server is ready at http://%SERVER_HOST%:%SERVER_PORT%
-echo Use Ctrl+C in the llama-server window to stop.
+
+REM --- Ensure pi models.json points at this server ---
+set "PI_CONFIG_DIR=%USERPROFILE%\.pi\agent"
+set "PI_MODELS_FILE=%PI_CONFIG_DIR%\models.json"
+if not exist "%PI_CONFIG_DIR%" mkdir "%PI_CONFIG_DIR%"
+if not exist "%PI_MODELS_FILE%" (
+    echo Writing Pi agent config to %PI_MODELS_FILE%...
+    echo {> "%PI_MODELS_FILE%"
+    echo   "providers": {>> "%PI_MODELS_FILE%"
+    echo     "turbofieldfare": {>> "%PI_MODELS_FILE%"
+    echo       "name": "llama.cpp (Local Gemma 4)",>> "%PI_MODELS_FILE%"
+    echo       "baseUrl": "http://%SERVER_HOST%:%SERVER_PORT%/v1",>> "%PI_MODELS_FILE%"
+    echo       "api": "openai-completions",>> "%PI_MODELS_FILE%"
+    echo       "apiKey": "local",>> "%PI_MODELS_FILE%"
+    echo       "compat": {>> "%PI_MODELS_FILE%"
+    echo         "supportsDeveloperRole": false,>> "%PI_MODELS_FILE%"
+    echo         "supportsReasoningEffort": false>> "%PI_MODELS_FILE%"
+    echo       },>> "%PI_MODELS_FILE%"
+    echo       "models": [>> "%PI_MODELS_FILE%"
+    echo         {>> "%PI_MODELS_FILE%"
+    echo           "id": "gemma-4-26b-a4b-it",>> "%PI_MODELS_FILE%"
+    echo           "name": "Gemma 4 26B-A4B IT (Local)",>> "%PI_MODELS_FILE%"
+    echo           "reasoning": false,>> "%PI_MODELS_FILE%"
+    echo           "input": ["text"],>> "%PI_MODELS_FILE%"
+    echo           "contextWindow": 4096,>> "%PI_MODELS_FILE%"
+    echo           "maxTokens": 2048,>> "%PI_MODELS_FILE%"
+    echo           "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }>> "%PI_MODELS_FILE%"
+    echo         }>> "%PI_MODELS_FILE%"
+    echo       ]>> "%PI_MODELS_FILE%"
+    echo     }>> "%PI_MODELS_FILE%"
+    echo   }>> "%PI_MODELS_FILE%"
+    echo }>> "%PI_MODELS_FILE%"
+)
+
+REM --- Launch Pi agent ---
+echo Launching Pi agent...
 echo.
-echo For Pi agent integration, configure models.json with:
-echo   baseUrl: http://%SERVER_HOST%:%SERVER_PORT%/v1
+set PI_SKIP_VERSION_CHECK=1
+set PI_TELEMETRY=0
+where pi >nul 2>&1
+if not errorlevel 1 (
+    pi --model turbofieldfare/gemma-4-26b-a4b-it
+) else (
+    echo Pi agent not found in PATH. Server is running at http://%SERVER_HOST%:%SERVER_PORT%
+    echo Install Pi agent or use any OpenAI-compatible client to send requests.
+)
 goto :eof
 
 :show_help
