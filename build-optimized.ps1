@@ -147,7 +147,11 @@ $cmakeArgs = @(
 
 Write-Host "CMake arguments: $cmakeArgs" -ForegroundColor DarkGray
 # Build CMake command as a single string for cmd.exe /c
-$argList = ($cmakeArgs -join ' ')
+# Quote any args that contain spaces (like compiler paths)
+$quotedArgs = $cmakeArgs | ForEach-Object {
+    if ($_ -match '\s') { "`"$_`"" } else { $_ }
+}
+$argList = ($quotedArgs -join ' ')
 $logFile = "$buildPath\cmake_config.log"
 $cmakeCmd = "cmake $argList > `"$logFile`" 2>&1"
 Write-Host "Running: $cmakeCmd" -ForegroundColor DarkGray
@@ -171,7 +175,10 @@ if ($process.ExitCode -ne 0) {
         "-DBUILD_SHARED_LIBS=ON",
         "-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON"
     )
-    $argList = ($cmakeArgs -join ' ')
+    $quotedArgs = $cmakeArgs | ForEach-Object {
+        if ($_ -match '\s') { "`"$_`"" } else { $_ }
+    }
+    $argList = ($quotedArgs -join ' ')
     $logFile = "$buildPath\cmake_config2.log"
     $cmakeCmd = "cmake $argList > `"$logFile`" 2>&1"
     $process = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $cmakeCmd -Wait -NoNewWindow -PassThru
