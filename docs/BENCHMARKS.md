@@ -132,7 +132,7 @@ Benchmarking 15+ configurations on Windows native found these optimums:
 | KV cache | **q4_0** | Less memory bandwidth than q8_0: +5% speed |
 | Micro-batch (ub) | **128** | Best throughput with Flash Attention |
 | Flash Attention | **-fa** (enabled) | 2x speedup at 16K context by avoiding full attention matrix |
-| CPU strict | **1** | Pin threads to cores: consistent latency |
+| CPU strict | **1** | Pin threads to cores: 23% speedup (5.04 → 6.23 tok/s) |
 | Context | **16384** | Full context window (benchmarked on N150: fits in 11.7GB RAM with q4_0 KV) |
 
 The optimal config achieves ~4.8 tok/s warm (after the first few tokens),

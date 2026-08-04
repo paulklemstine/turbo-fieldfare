@@ -217,7 +217,7 @@ set "LLAMA_OPTS=-m "%MODEL_PATH%" -ngl %GPU_LAYERS% -c %CONTEXT_TOKENS% -t %THRE
 
 REM --- CPU optimization flags ---
 if "%GPU_LAYERS%"=="0" (
-    set "LLAMA_OPTS=!LLAMA_OPTS! -ctk q4_0 -ctv q4_0 -ub 128 -fa"
+    set "LLAMA_OPTS=!LLAMA_OPTS! -ctk q4_0 -ctv q4_0 -ub 128 -fa --cpu-strict 1"
 )
 
 REM --- Start llama-server ---
