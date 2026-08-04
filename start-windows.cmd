@@ -356,13 +356,24 @@ if errorlevel 1 (
     )
 )
 
-REM --- Ensure Node.js is in PATH ---
-REM Add common install locations unconditionally (harmless if already present)
+REM --- Find node.exe and add its directory to PATH ---
+REM Check common install locations
+set "NODE_DIR="
 if exist "%ProgramFiles%\nodejs\node.exe" (
-    set "PATH=%PATH%;%ProgramFiles%\nodejs"
+    set "NODE_DIR=%ProgramFiles%\nodejs"
+) else if exist "%LOCALAPPDATA%\Programs\nodejs\node.exe" (
+    set "NODE_DIR=%LOCALAPPDATA%\Programs\nodejs"
 )
-if exist "%LOCALAPPDATA%\Programs\nodejs\node.exe" (
-    set "PATH=%PATH%;%LOCALAPPDATA%\Programs\nodejs"
+
+if defined NODE_DIR (
+    set "PATH=%PATH%;!NODE_DIR!"
+) else (
+    echo.
+    echo ERROR: Node.js installed but node.exe not found.
+    echo   Close and reopen PowerShell, then re-run this script.
+    echo.
+    echo Server is still running at http://%SERVER_HOST%:%SERVER_PORT%
+    goto :eof
 )
 
 echo Installing Pi agent via npm...
@@ -376,23 +387,35 @@ if errorlevel 1 (
     goto :eof
 )
 
-REM --- Ensure npm global bin is in PATH ---
+REM --- Launch Pi using the full path to node + pi script ---
 REM npm -g installs to %APPDATA%\npm on Windows
-if exist "%APPDATA%\npm\pi.cmd" (
-    set "PATH=%PATH%;%APPDATA%\npm"
+set "PI_SCRIPT="
+if exist "%APPDATA%\npm\node_modules\@earendil-works\pi-coding-agent\bin\pi" (
+    set "PI_SCRIPT=%APPDATA%\npm\node_modules\@earendil-works\pi-coding-agent\bin\pi"
+) else if exist "%APPDATA%\npm\pi.cmd" (
+    REM Find the actual JS entry point
+    for /f "tokens=*" %%a in ('dir /s /b "%APPDATA%\npm\node_modules\@earendil-works\pi-coding-agent\*.js" 2^>nul ^| findstr /i "bin\\pi"') do (
+        set "PI_SCRIPT=%%a"
+    )
 )
 
-where pi >nul 2>&1
-if not errorlevel 1 (
+if defined PI_SCRIPT (
     echo Pi agent installed. Launching...
-    pi --model turbofieldfare/gemma-4-26b-a4b-it
+    "!NODE_DIR!\node" "!PI_SCRIPT!" --model turbofieldfare/gemma-4-26b-a4b-it
 ) else (
-    echo.
-    echo ERROR: Pi agent installed but not found in PATH.
-    echo   Try closing and reopening PowerShell, then run:
-    echo   pi --model turbofieldfare/gemma-4-26b-a4b-it
-    echo.
-    echo Server is still running at http://%SERVER_HOST%:%SERVER_PORT%
+    REM Fallback: try pi command (may work if PATH is set right)
+    where pi >nul 2>&1
+    if not errorlevel 1 (
+        echo Pi agent installed. Launching...
+        pi --model turbofieldfare/gemma-4-26b-a4b-it
+    ) else (
+        echo.
+        echo ERROR: Pi agent installed but entry point not found.
+        echo   Try closing and reopening PowerShell, then run:
+        echo   pi --model turbofieldfare/gemma-4-26b-a4b-it
+        echo.
+        echo Server is still running at http://%SERVER_HOST%:%SERVER_PORT%
+    )
 )
 goto :eof
 
