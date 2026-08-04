@@ -121,8 +121,9 @@ Performance notes (CPU-only):
     First request ~0.66 tok/s (cold cache). RSS ~4.4 GB.
 
   Windows native (11.7GB RAM):
-    ~3.41 tok/s average (best 4.11 tok/s)
-    4-5x faster than WSL2 due to more available RAM for page cache.
+    ~4.61 tok/s warm (best 5.43 tok/s)
+    6.4x faster than WSL2 due to more available RAM for page cache.
+    Optimal config: repack ON + 3 threads + q4_0 KV + ub 256.
 
   When running under WSL2, ./start.sh automatically dispatches to
   start-windows.cmd for native Windows execution (much faster). Use the

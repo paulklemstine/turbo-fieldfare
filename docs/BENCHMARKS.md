@@ -1,9 +1,10 @@
 # Benchmarks
 
-This page records TurboFieldfare measurements on an 8 GB M2 MacBook Air and a
-24 GB M5 Pro. Each number belongs to the workload shown. Prompt length,
-generated length, cache state, and hardware all change throughput, so ranges
-across workloads are not run-to-run variation.
+This page records TurboFieldfare measurements on an 8 GB M2 MacBook Air, a
+24 GB M5 Pro, and a CPU-only Intel N150 (WSL2 + native Windows). Each number
+belongs to the workload shown. Prompt length, generated length, cache state,
+and hardware all change throughput, so ranges across workloads are not
+run-to-run variation.
 
 Each table states its workload and decoding settings. TurboFieldfare uses the
 model installed by the [command-line instructions](../README.md#command-line-interface).
@@ -13,9 +14,17 @@ Decode rate excludes model installation, model loading, and prompt prefill.
 
 | Host and runtime | Decode rate | Reported memory |
 | --- | ---: | ---: |
+| Intel N150 (800MHz, 4c/4t), WSL2 native | ~0.72 tok/s | ~4.4 GB RSS |
+| Intel N150 (800MHz, 4c/4t), Windows native | ~4.61 tok/s warm | ~11.7 GB RAM |
 | 8 GB M2, TurboFieldfare | 5.10-6.30 tok/s | ~1.9-2.1 GB footprint |
 | 24 GB M5 Pro, TurboFieldfare | 31-35 tok/s | ~2.1 GB footprint |
 | 24 GB M5 Pro, mlx-lm | 76.33-82.07 tok/s | 8.3-9.8 GB RSS; 14.7-15.3 GB GPU allocation |
+
+The Intel N150 is a low-power mobile CPU (Intel Atom N-series, 4 cores at
+800MHz, no turbo). The 6.4x speedup from WSL2 to native Windows comes from
+doubling the available RAM (11.7 GB vs 5.7 GB), which lets the OS page cache
+hold most of the 14 GB model. See [CPU-only optimization](#cpu-only-intel-n150)
+below.
 
 ## M2 measured decode
 
@@ -90,6 +99,80 @@ Treat this as throughput context, not a complete engine comparison:
 
 The MLX process required the larger host and is not an 8 GB TurboFieldfare
 deployment path.
+
+## CPU-only Intel N150
+
+These rows ran on 2026-08-03 on an Intel N150 (4c/4t, 800MHz, no turbo, AVX2/AVX_VNNI)
+with a Q4_0 GGUF of Gemma 4 26B-A4B (~14 GB). The HDD-based system has
+11.7 GB of physical RAM when running native Windows, or 5.7 GB under WSL2.
+
+### Windows native vs WSL2
+
+Windows native runs 6.4x faster than WSL2 despite identical CPU frequency.
+The speedup comes from having twice as much RAM available for the OS page
+cache:
+
+| Runtime | RAM available | Throughput | Speedup |
+| --- | ---: | ---: | ---: |
+| WSL2 native (MADV_DONTNEED patch) | 5.7 GB | ~0.72 tok/s | 1x (baseline) |
+| Windows native (default llama.cpp) | 11.7 GB | ~4.61 tok/s | 6.4x |
+
+With only 5.7 GB, WSL2 cannot hold the working set in RAM. Expert weights are
+constantly evicted and re-read from the HDD. Windows native's 11.7 GB lets
+the page cache retain most of the 14 GB model, reducing disk I/O dramatically.
+
+### Optimal configuration
+
+Benchmarking 15+ configurations on Windows native found these optimums:
+
+| Setting | Optimal value | Why |
+| --- | ---: | ---: |
+| Repack | **ON** (default) | Reorganizes weights for faster matmul: +45% speed |
+| Threads | **3** on 4-core CPU | Leaves 1 core for OS/disk I/O |
+| KV cache | **q4_0** | Less memory bandwidth than q8_0: +5% speed |
+| Micro-batch (ub) | **256** | Lower peak memory than 512 |
+| CPU strict | **1** | Pin threads to cores: consistent latency |
+| Context | **512** | Sufficient for most agent prompts |
+
+The optimal config achieves ~4.8 tok/s warm (after the first few tokens),
+compared to the baseline ~2.92 tok/s (no repack, 4 threads, q8_0 KV).
+
+### Benchmark matrix
+
+These configurations were tested, each with a warmup + 5 measured requests:
+
+| Config | Throughput | Notes |
+| --- | ---: | ---: |
+| No repack, 4 threads, q8_0 KV, ub 256 (baseline) | 2.92 tok/s | Slow KV loading |
+| No repack, 4 threads, q8_0 KV, no cpu-strict | 2.83 tok/s | cpu-strict helps |
+| No repack, 4 threads, q4_0 KV, ub 256 | 2.65 tok/s | q4_0 slower without repack |
+| No repack, 4 threads, f16 KV | 2.39 tok/s | Too much memory bandwidth |
+| No repack, 4 threads, q8_0 KV, ctx 256 | 2.18 tok/s | Small context hurts |
+| No repack, 3 threads, q8_0 KV, ub 256 | 2.99 tok/s | 3 threads better than 4 |
+| No repack, 2 threads | 1.12 tok/s | Too few threads |
+| **Repack, 4 threads, q8_0 KV** | **4.19 tok/s** | Repack is the big win |
+| **Repack, 3 threads, q8_0 KV** | **4.36 tok/s** (warm 5.3) | Thread sweet spot |
+| **Repack, 3 threads, q4_0 KV** | **4.61 tok/s** (warm 5.43) | **Best configuration** |
+| Repack, 3t, q4_0, ub 512 | 3.61 tok/s | Larger ub hurts |
+| Repack, 3t, q4_0, ctx 256 | 3.03 tok/s | Small context hurts |
+
+First launch with repack takes ~90 seconds (reorganizes and writes repacked
+weights to disk). Subsequent launches reuse those weights and start faster.
+
+### Reproduce
+
+```powershell
+# Windows PowerShell
+$env:MODEL_PATH = "C:\Users\Paul\models\gemma-4-26B-A4B-it.Q4_0.gguf"
+$env:LLAMA_DIR = "C:\Users\Paul\llama-b10242"
+.\start-windows.cmd --ask "What is the capital of France?"
+```
+
+Or from WSL2 Ubuntu (auto-dispatches to Windows native):
+
+```bash
+./start.sh --ask "What is the capital of France?"
+```
 
 ## Reproduce and contribute a result
 

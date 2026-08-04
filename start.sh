@@ -44,18 +44,27 @@ if [ "$is_wsl" = "1" ]; then
         fi
     done
     if [ "$use_wsl_native" = "0" ]; then
-        # Default: delegate to Windows native launcher for best performance
-        # Convert the Linux path to Windows format for cmd.exe
-        WIN_PATH="$REPO_DIR/start-windows.cmd"
-        if command -v wslpath >/dev/null 2>&1; then
-            WIN_PATH="$(wslpath -w "$WIN_PATH")"
-        fi
+        # Default: delegate to Windows native launcher for best performance.
+        # We invoke cmd.exe from a Windows-accessible directory with a simple
+        # command. This avoids WSL interop issues with Linux paths.
+        #
+        # Optimal config discovered by benchmarking 15+ combinations on N150:
+        #   repack ON + 3 threads + q4_0 KV + ub 256 = ~4.8 tok/s warm
+        #   (6.7x faster than WSL2's ~0.72 tok/s)
+
+        # Copy the Windows launcher to C: drive
+        WIN_CMD_DIR="/mnt/c/Users/Paul"
+        cp -f "$REPO_DIR/start-windows.cmd" "$WIN_CMD_DIR/start-windows.cmd" 2>/dev/null
+
         # Filter out --wsl from args if present
         args=()
         for arg in "$@"; do
             [ "$arg" = "--wsl" ] || args+=("$arg")
         done
-        exec cmd.exe /c "$WIN_PATH" "${args[@]}"
+
+        # cd to Windows path then exec cmd.exe (cmd.exe fails on Linux paths)
+        cd "$WIN_CMD_DIR"
+        exec cmd.exe /c "C:\Users\Paul\start-windows.cmd" "${args[@]}"
     fi
 fi
 

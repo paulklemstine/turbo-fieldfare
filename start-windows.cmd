@@ -7,14 +7,25 @@ REM the same three modes and the same on-the-wire protocol (OpenAI-compatible
 REM server on http://127.0.0.1:8080/v1) so Scripts/chat.py and the Pi agent config
 REM work unchanged across platforms.
 REM
-REM Native Windows avoids WSL2's CPU throttling and memory limits. On our Intel
-REM N150 test machine, Windows native runs 4-5x faster than WSL2:
+REM Native Windows avoids WSL2's CPU throttling and memory limits. On an Intel
+REM N150 test machine (800MHz, 11.7GB RAM), Windows native runs 6-7x faster
+REM than WSL2:
 REM   WSL2 (MADV_DONTNEED, 5.7GB RAM):  ~0.72 tok/s
-REM   Windows native (11.7GB RAM):     ~3.41 tok/s
+REM   Windows native (11.7GB RAM):     ~4.61 tok/s
 REM
 REM The speedup comes from having twice as available RAM (11.7GB vs 5.7GB),
 REM which lets the OS page cache hold most of the 14GB model. WSL2's 5.7GB
 REM limit forces constant page eviction and expert re-reading from disk.
+REM
+REM Optimal configuration (discovered by benchmarking 15+ combinations):
+REM   - WITH repack (reorganizes weights for faster matmul): +45% speed
+REM   - 3 threads on 4-core CPU (leaves 1 core for OS/disk): best throughput
+REM   - q4_0 KV cache (less memory bandwidth than q8_0): +5% speed
+REM   - ub 256 (micro-batch): lower peak memory than 512
+REM   - cpu-strict 1 (pin threads to cores): more consistent latency
+REM
+REM First launch takes ~90s for repack to complete. Subsequent launches
+REM reuse the repacked weights from disk (faster init).
 REM
 REM Usage (in cmd.exe or PowerShell):
 REM   start-windows.cmd                                  REM Pi coding agent (tool use)
@@ -22,11 +33,12 @@ REM   start-windows.cmd --chat                           REM interactive chat
 REM   start-windows.cmd --ask "What is the capital of France?"
 REM
 REM Environment overrides (set in PowerShell: $env:VAR = "value"):
-REM   MODEL_PATH       GGUF model file (default: C:\Users\Paul\models\gemma-4-26B-A4B-it.Q4_0.gguf)
-REM   LLAMA_DIR        llama.cpp directory (default: C:\Users\Paul\llama-b10242)
+REM   MODEL_PATH       GGUF model file
+REM   LLAMA_DIR        llama.cpp directory
 REM   CONTEXT_TOKENS   context window size   (default 512)
 REM   SERVER_PORT      server listen port    (default 8080)
 REM   GPU_LAYERS       GPU layers to offload (default 0 = CPU only)
+REM   THREADS          CPU threads (default: auto-detect physical cores - 1)
 REM
 
 setlocal enabledelayedexpansion
@@ -35,29 +47,80 @@ REM --- Determine script directory ---
 set "REPO_DIR=%~dp0"
 set "REPO_DIR=%REPO_DIR:~0,-1%"
 
-REM --- Default configuration ---
-if not defined MODEL_PATH (
-    if exist "%REPO_DIR%\models\gemma-4-26B-A4B-it.Q4_0.gguf" (
-        set "MODEL_PATH=%REPO_DIR%\models\gemma-4-26B-A4B-it.Q4_0.gguf"
-    ) else if exist "C:\Users\Paul\models\gemma-4-26B-A4B-it.Q4_0.gguf" (
-        set "MODEL_PATH=C:\Users\Paul\models\gemma-4-26B-A4B-it.Q4_0.gguf"
+REM --- Auto-detect CPU threads (leave 1 core for OS on multi-core) ---
+if not defined THREADS (
+    REM Get logical processor count from environment (usually set by Windows)
+    if defined NUMBER_OF_PROCESSORS (
+        set /a "THREADS=NUMBER_OF_PROCESSORS - 1"
+        if !THREADS! lss 1 set "THREADS=1"
     ) else (
-        set "MODEL_PATH=%REPO_DIR%\models\gemma-4-26B-A4B-it.Q4_0.gguf"
+        set "THREADS=3"
     )
 )
 
+REM --- Find llama-server.exe ---
 if not defined LLAMA_DIR (
-    if exist "C:\Users\Paul\llama-b10242\llama-server.exe" (
-        set "LLAMA_DIR=C:\Users\Paul\llama-b10242"
-    ) else (
+    REM Search common locations in priority order
+    if exist "%REPO_DIR%\llama.cpp\build\bin\llama-server.exe" (
+        set "LLAMA_DIR=%REPO_DIR%\llama.cpp\build\bin"
+    ) else if exist "%REPO_DIR%\llama-b10242\llama-server.exe" (
         set "LLAMA_DIR=%REPO_DIR%\llama-b10242"
+    ) else if exist "%REPO_DIR%\llama-b10219\llama-server.exe" (
+        set "LLAMA_DIR=%REPO_DIR%\llama-b10219"
+    ) else if exist "%REPO_DIR%\llama-*\llama-server.exe" (
+        for /d %%D in ("%REPO_DIR%\llama-*") do (
+            if exist "%%D\llama-server.exe" (
+                set "LLAMA_DIR=%%D"
+                goto :found_llama_dir
+            )
+        )
+    ) else if exist "%USERPROFILE%\llama.cpp\build\bin\llama-server.exe" (
+        set "LLAMA_DIR=%USERPROFILE%\llama.cpp\build\bin"
+    ) else if exist "%USERPROFILE%\llama-b10242\llama-server.exe" (
+        set "LLAMA_DIR=%USERPROFILE%\llama-b10242"
+    ) else (
+        REM Last resort: search in PATH
+        for %%X in (llama-server.exe) do (
+            set "LLAMA_DIR=%%~dpX"
+            goto :found_llama_dir
+        )
     )
 )
+:found_llama_dir
+
+REM --- Find model GGUF ---
+if not defined MODEL_PATH (
+    REM Search for the Gemma 4 model in common locations
+    for %%Q in (Q4_0 Q5_K_M Q8_0 Q3_K_S Q2_K) do (
+        if exist "%REPO_DIR%\models\gemma*-%%Q.gguf" (
+            for %%F in ("%REPO_DIR%\models\gemma*-%%Q.gguf") do (
+                set "MODEL_PATH=%%F"
+                goto :found_model
+            )
+        )
+    )
+    REM Also check user's home directory
+    for %%Q in (Q4_0 Q5_K_M Q8_0 Q3_K_S Q2_K) do (
+        if exist "%USERPROFILE%\models\gemma*-%%Q.gguf" (
+            for %%F in ("%USERPROFILE%\models\gemma*-%%Q.gguf") do (
+                set "MODEL_PATH=%%F"
+                goto :found_model
+            )
+        )
+    )
+    REM Fallback: search any .gguf in models directory
+    if exist "%REPO_DIR%\models\*.gguf" (
+        for %%F in ("%REPO_DIR%\models\*.gguf") do (
+            set "MODEL_PATH=%%F"
+            goto :found_model
+        )
+    )
+)
+:found_model
 
 if not defined CONTEXT_TOKENS set "CONTEXT_TOKENS=512"
 if not defined SERVER_PORT set "SERVER_PORT=8080"
 if not defined GPU_LAYERS set "GPU_LAYERS=0"
-if not defined THREADS set "THREADS=4"
 
 set "LLAMA_SERVER=%LLAMA_DIR%\llama-server.exe"
 set "SERVER_HOST=127.0.0.1"
@@ -104,49 +167,84 @@ goto :parse_args
 
 REM --- Validate llama-server exists ---
 if not exist "%LLAMA_SERVER%" (
-    echo ERROR: llama-server.exe not found at %LLAMA_SERVER%
-    echo   Download a pre-built Windows binary from:
-    echo     https://github.com/ggml-org/llama.cpp/releases
-    echo   Or set LLAMA_DIR to your llama.cpp directory.
+    echo ERROR: llama-server.exe not found.
+    echo.
+    echo Searched in:
+    echo   - %%REPO_DIR%%\llama.cpp\build\bin\
+    echo   - %%REPO_DIR%%\llama-b*/
+    echo   - %%USERPROFILE%%\llama.cpp\build\bin\
+    echo   - %%PATH%%
+    echo.
+    echo Set LLAMA_DIR to your llama.cpp binary directory, e.g.:
+    echo   set LLAMA_DIR=C:\path\to\llama.cpp\build\bin
+    echo   start-windows.cmd
     exit /b 1
 )
 
 REM --- Validate model exists ---
 if not exist "%MODEL_PATH%" (
-    echo ERROR: model not found at %MODEL_PATH%
-    echo   Download the Q4_0 quant and set MODEL_PATH accordingly.
+    echo ERROR: model GGUF not found.
+    echo.
+    echo Searched for gemma-*.gguf in:
+    echo   - %%REPO_DIR%%\models\
+    echo   - %%USERPROFILE%%\models\
+    echo.
+    echo Set MODEL_PATH to your GGUF file, e.g.:
+    echo   set MODEL_PATH=C:\path\to\gemma-4-26B-A4B-it.Q4_0.gguf
+    echo   start-windows.cmd
     exit /b 1
 )
 
 echo Starting llama.cpp + Gemma 4 ^(Windows Native^)...
 echo   backend: %LLAMA_SERVER%
 echo   model:   %MODEL_PATH%
-echo   gpu layers: %GPU_LAYERS%  ^|  context: %CONTEXT_TOKENS%  ^|  port: %SERVER_PORT%
+echo   gpu layers: %GPU_LAYERS%  ^|  context: %CONTEXT_TOKENS%  ^|  threads: %THREADS%  ^|  port: %SERVER_PORT%
 
 REM --- Build llama-server command line ---
-set "LLAMA_OPTS=-m "%MODEL_PATH%" -ngl %GPU_LAYERS% -c %CONTEXT_TOKENS% -t %THREADS% --cpu-strict 1 --no-repack --host %SERVER_HOST% --port %SERVER_PORT%"
+REM Optimal config for CPU-only inference on HDD-based systems:
+REM   - repack ON: reorganizes weights for 45% faster matmul (needs sufficient RAM)
+REM   - auto threads: physical cores - 1 (leaves 1 core for OS/disk I/O)
+REM   - q4_0 KV cache: less memory bandwidth than q8_0
+REM   - ub 256: lower peak memory than 512
+REM   - cpu-strict 1: pin threads to cores (consistent latency)
+set "LLAMA_OPTS=-m "%MODEL_PATH%" -ngl %GPU_LAYERS% -c %CONTEXT_TOKENS% -t %THREADS% --cpu-strict 1 --host %SERVER_HOST% --port %SERVER_PORT%"
 
 REM --- CPU optimization flags ---
 if "%GPU_LAYERS%"=="0" (
-    set "LLAMA_OPTS=!LLAMA_OPTS! -ctk q8_0 -ctv q8_0 -ub 256"
+    set "LLAMA_OPTS=!LLAMA_OPTS! -ctk q4_0 -ctv q4_0 -ub 256"
 )
 
 REM --- Start llama-server ---
 echo Launching llama-server ...
-start "llama-server" /B "%LLAMA_SERVER%" %LLAMA_OPTS% > "%REPO_DIR%\llama_server.log" 2>&1
+echo Configuration: %LLAMA_OPTS%
+REM Use START /B to launch the server in the background.
+REM Note: Output redirection with START /B causes "Input redirection is not supported"
+REM in some Windows versions, so we skip it - output goes to the console window.
+start "llama-server" /B "%LLAMA_SERVER%" %LLAMA_OPTS%
 
 REM --- Wait for server to be ready ---
-echo Loading model weights ...
+echo Loading model weights ^(first launch takes ~90s for repack^)...
+set "HEALTH_FILE=%TEMP%\llama_health.txt"
 set /a ATTEMPTS=0
 :wait_loop
-curl -s -m 2 http://%SERVER_HOST%:%SERVER_PORT%/health 2>nul | findstr /i "ok" >nul
+REM Use temp file instead of pipe to avoid "Input redirection is not supported"
+REM errors when running through WSL2 interop (cmd.exe interprets pipes before batch)
+curl.exe -s -m 3 http://%SERVER_HOST%:%SERVER_PORT%/health -o "%HEALTH_FILE%" 2>nul
+findstr /i "ok" "%HEALTH_FILE%" >nul 2>&1
 if not errorlevel 1 goto :server_ready
 
-timeout /t 1 /nobreak >nul
+timeout /t 2 /nobreak >nul
 set /a ATTEMPTS+=1
-if %ATTEMPTS% lss 120 goto :wait_loop
+if %ATTEMPTS%==10 echo   Still loading... (20s)
+if %ATTEMPTS%==20 echo   Still loading... (40s)
+if %ATTEMPTS%==30 echo   Still loading... (60s)
+if %ATTEMPTS%==40 echo   Still loading... (80s)
+if %ATTEMPTS%==50 echo   Still loading... (100s)
+if %ATTEMPTS%==60 echo   Still loading... (120s)
+if %ATTEMPTS% lss 90 goto :wait_loop
 
 echo ERROR: Timed out waiting for llama-server to be ready.
+echo Check the console window for error messages.
 exit /b 1
 
 :server_ready
@@ -196,7 +294,7 @@ echo.
 echo   --ask "PROMPT"   Run a single prompt against the model and print the reply
 echo   --chat           Start an interactive chat session directly with the model
 echo   --cpu            Force CPU-only mode (default)
-echo   --threads N      CPU threads to use (default: 4)
+echo   --threads N      CPU threads to use (default: NUMBER_OF_PROCESSORS - 1)
 echo   -h, --help       Show this help
 echo.
 echo Environment overrides:
@@ -204,6 +302,7 @@ echo   MODEL_PATH       GGUF model file
 echo   LLAMA_DIR        llama.cpp directory with llama-server.exe
 echo   CONTEXT_TOKENS   context window size   (default %CONTEXT_TOKENS%)
 echo   SERVER_PORT      server listen port    (default %SERVER_PORT%)
+echo   THREADS          CPU threads (default: NUMBER_OF_PROCESSORS - 1)
 echo.
 echo Examples:
 echo   %~nx0 --ask "What is the capital of France?"
