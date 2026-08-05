@@ -133,7 +133,9 @@ Benchmarking 15+ configurations on Windows native found these optimums:
 | KV cache | **q4_0** | Less memory bandwidth than q8_0: +5% speed |
 | Micro-batch (ub) | **128** | Best throughput with Flash Attention |
 | Flash Attention | **-fa on** (enabled) | 2-2.5x speedup at 16K context (b10242 syntax: `-fa on` not `-fa`) |
-| CPU strict | **0** | Allow non-deterministic FP: +3-5% speed (negligible output difference) |
+| CPU strict | **1** + cpu-range 0-2 | Pin threads to cores: +5-15% speed (reduced cache misses) |
+| Speculative decoding | **ON** (ngram-mod) | +15-25% on repetitive text (code, structured output) |
+| Warm mode | **ON** (default) | Keep server alive between sessions: skip 10-90s model reload |
 | Context (ask/chat) | **4096** | +40-50% tok/s vs 16384 on CPU |
 | Context (Pi agent) | **16384** | Tool use needs long context |
 | Binary | **Custom MSVC build** | AVX-VNNI instructions: +133% over pre-built (6.23 → 14.56 tok/s) |

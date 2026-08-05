@@ -24,8 +24,8 @@ REM   - 3 threads pinned to cores (cpu-strict 1 + cpu-range): +5-15% speed
 REM   - q4_0 KV cache (less memory bandwidth than q8_0): +5% speed
 REM   - ub 128 (micro-batch): optimal with Flash Attention
 REM   - context 4096 for --ask/--chat: +40-50% tok/s vs 16384
-REM   - --speculative: n-gram speculative decoding, +15-25% on repetitive text
-REM   - --warm: keep server alive between sessions (skip model reload next time)
+REM   - n-gram speculative decoding (default ON): +15-25% on repetitive text
+REM   - warm mode (default ON): keep server alive between sessions
 REM
 REM First launch takes ~90s for repack to complete. Subsequent launches
 REM reuse the repacked weights from disk (faster init).
@@ -34,9 +34,9 @@ REM Usage (in cmd.exe or PowerShell):
 REM   start-windows.cmd                                  REM Pi coding agent (tool use)
 REM   start-windows.cmd --chat                           REM interactive chat (ctx=4096)
 REM   start-windows.cmd --ask "What is the capital of France?"
-REM   start-windows.cmd --ask "prompt" --speculative     REM with n-gram speculation
+REM   start-windows.cmd --no-speculative                 REM disable speculation
+REM   start-windows.cmd --no-warm                        REM don't keep server warm
 REM   start-windows.cmd --chat --context 8192            REM explicit context size
-REM   start-windows.cmd --warm                           REM keep server warm between sessions
 REM
 REM Environment overrides (set in PowerShell: $env:VAR = "value"):
 REM   MODEL_PATH       GGUF model file
@@ -134,9 +134,9 @@ set "API_BASE=http://%SERVER_HOST%:%SERVER_PORT%/v1"
 set "MODE=pi"
 set "ASK_PROMPT="
 set "DEBUG=0"
-set "SPECULATIVE=0"
+set "SPECULATIVE=1"
 set "CONTEXT_DEFAULT=1"
-set "WARM=0"
+set "WARM=1"
 
 REM --- Parse arguments ---
 :parse_args
@@ -183,8 +183,18 @@ if /i "%~1"=="--speculative" (
     shift
     goto :parse_args
 )
+if /i "%~1"=="--no-speculative" (
+    set "SPECULATIVE=0"
+    shift
+    goto :parse_args
+)
 if /i "%~1"=="--warm" (
     set "WARM=1"
+    shift
+    goto :parse_args
+)
+if /i "%~1"=="--no-warm" (
+    set "WARM=0"
     shift
     goto :parse_args
 )
@@ -264,6 +274,23 @@ REM (code, structured text), achieves +15-25% throughput. Enable with --speculat
 if "%SPECULATIVE%"=="1" (
     set "LLAMA_OPTS=!LLAMA_OPTS! --spec-type ngram-mod --spec-ngram-mod-n-match 24 --spec-ngram-mod-n-min 48 --spec-ngram-mod-n-max 64 --spec-draft-n-max 4"
 )
+
+REM --- Show active optimizations ---
+echo.
+echo Active optimizations:
+if "%SPECULATIVE%"=="1" (
+    echo   [ON] N-gram speculative decoding (ngram-mod)
+) else (
+    echo   [OFF] N-gram speculative decoding
+)
+if "%WARM%"=="1" (
+    echo   [ON] Warm mode (server stays alive after client exits)
+) else (
+    echo   [OFF] Warm mode
+)
+echo   [ON] Thread pinning (cpu-strict 1, cpu-range 0-2)
+echo   [ON] Flash Attention, q4_0 KV cache, ub 128
+echo.
 
 REM --- Start llama-server ---
 echo Launching llama-server ...
@@ -497,9 +524,11 @@ echo Options:
 echo   --context N      Context window size (default: 4096 for --ask/--chat, 16384 for Pi)
 echo   --cpu            Force CPU-only mode (default)
 echo   --debug          Show llama-server log output in the console (default: off)
-echo   --speculative    Enable n-gram speculative decoding (+15-25% on repetitive text)
+echo   --speculative    Enable n-gram speculative decoding (default: on)
+echo   --no-speculative Disable n-gram speculative decoding
 echo   --threads N      CPU threads to use (default: NUMBER_OF_PROCESSORS - 1)
-echo   --warm           Keep server running after client exits (skip reload next time)
+echo   --warm           Keep server running after client exits (default: on)
+echo   --no-warm        Don't keep server running after client exits
 echo   -h, --help       Show this help
 echo.
 echo --ask and --chat connect directly to llama-server, bypassing the Pi agent
@@ -509,9 +538,10 @@ echo.
 echo Speed tips:
 echo   - Default context is 4096 for --ask/--chat (+40-50% tok/s vs 16384)
 echo   - Thread pinning (--cpu-strict 1 + --cpu-range) adds +5-15%
-echo   - --speculative adds +15-25% on repetitive content (code, structured text)
-echo   - --warm keeps server alive between sessions (skip 10-90s model reload)
+echo   - Speculative decoding is ON by default (+15-25% on repetitive text)
+echo   - Warm mode is ON by default (skip 10-90s model reload between sessions)
 echo   - Use --context 16384 only when you genuinely need long context
+echo   - Use --no-warm or --no-speculative to compare without optimizations
 echo.
 echo Environment overrides:
 echo   MODEL_PATH       GGUF model file
@@ -523,9 +553,9 @@ echo.
 echo Examples:
 echo   %~nx0 --ask "What is the capital of France?"
 echo   %~nx0 --chat
-echo   %~nx0 --chat --speculative
+echo   %~nx0 --chat --no-speculative
 echo   %~nx0 --ask "Explain quantum computing" --context 8192
-echo   %~nx0 --warm
+echo   %~nx0 --no-warm
 echo   %~nx0 --threads 8
 echo   %~nx0 --chat --debug
 goto :eof

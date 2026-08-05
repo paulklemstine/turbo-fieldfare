@@ -229,6 +229,9 @@ with these optimal flags:
 Plus context size: **4096** for `--ask`/`--chat` modes (fast), **16384** for Pi
 agent mode (tool use). Override with `--context N`.
 
+By default, **n-gram speculative decoding** and **warm mode** are both ON. Disable
+with `--no-speculative` or `--no-warm` to compare performance without them.
+
 Server output is hidden to `llama_server.log` by default; use `--debug` to show
 it in the console.
 
@@ -256,8 +259,9 @@ For best performance:
 - Run in short bursts (a few requests at a time)
 - Ensure adequate ventilation
 - Reduce context to 4096 when you don't need long context (`+40-50%` speed)
-- Use `--speculative` for repetitive content (`+15-25%` on code/structured text)
-- Use `--warm` to keep server alive between sessions (skip 10-90s model reload)
+- Speculative decoding is ON by default (`+15-25%` on code/structured text)
+- Warm mode is ON by default (skip 10-90s model reload between sessions)
+- Use `--no-speculative` or `--no-warm` to measure baseline without optimizations
 
 ### Warm server mode
 
@@ -272,6 +276,30 @@ means the system prompt's KV cache is reused across sessions — Turn 1 of the n
 session skips the ~3KB system prompt prefill.
 
 The server keeps running until you press any key in the warm mode window.
+
+### Benchmarking
+
+A PowerShell benchmark script is included to measure token generation speed:
+
+```powershell
+.\run-benchmark.cmd
+```
+
+This runs `benchmark.ps1` which tests:
+1. **Default mode** (speculative ON) — measures tok/s with n-gram speculation
+2. **Without speculative** — measures baseline tok/s without speculation
+3. **--ask mode** — single-shot query test
+4. **Chat mode** — multi-turn conversation test
+
+Results are saved to `benchmark_results.json`. The script uses `curl.exe` for
+HTTP requests (avoids WSL2 interop issues with `Invoke-WebRequest`).
+
+To run specific tests:
+```powershell
+.\benchmark.ps1 -TestMode speed    # Speed tests only
+.\benchmark.ps1 -Iterations 5      # 5 iterations per test
+.\benchmark.ps1 -Port 8080         # Use different port
+```
 
 ---
 
