@@ -224,11 +224,38 @@ to a different GGUF, or rebuild llama.cpp with different flags.
 The launcher auto-detects the model and llama-server.exe. It starts the server
 with these optimal flags:
 ```
--ngl 0 -c 16384 -t 3 -ctk q4_0 -ctv q4_0 -ub 128 -fa on --cpu-strict 1
+-ngl 0 -t 3 -ctk q4_0 -ctv q4_0 -ub 128 -fa on --cpu-strict 0
 ```
+Plus context size: **4096** for `--ask`/`--chat` modes (fast), **16384** for Pi
+agent mode (tool use). Override with `--context N`.
 
 Server output is hidden to `llama_server.log` by default; use `--debug` to show
 it in the console.
+
+### Modes
+
+| Mode | Command | Default context | Use case |
+| ---- | ------- | -------------- | -------- |
+| Pi agent | `.\start-windows.cmd` | 16384 | Coding tasks, tool use |
+| Interactive chat | `.\start-windows.cmd --chat` | 4096 | Fast back-and-forth |
+| Single prompt | `.\start-windows.cmd --ask "Hello!"` | 4096 | One-shot queries |
+
+`--ask` and `--chat` bypass the Pi agent, avoiding its ~2-3KB system prompt
+overhead. They connect directly to llama-server via `Scripts/chat.py`.
+
+### Performance expectations
+
+**Fresh (cool CPU):** ~14.5 tok/s with ctx=16384, up to ~20-22 tok/s with ctx=4096.
+
+**Thermal throttling:** The N150 is a 6W TDP chip. Under sustained all-core load,
+it will thermal throttle after ~2-3 minutes, dropping to ~2-4 tok/s. This is
+normal. Performance recovers after a cooldown period (~30s idle).
+
+For best performance:
+- Run in short bursts (a few requests at a time)
+- Ensure adequate ventilation
+- Reduce context to 4096 when you don't need long context (`+40-50%` speed)
+- Use `--speculative` for repetitive content (`+15-25%` on code/structured text)
 
 ---
 

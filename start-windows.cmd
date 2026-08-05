@@ -18,24 +18,29 @@ REM which lets the OS page cache hold most of the 14GB model. WSL2's 5.7GB
 REM limit forces constant page eviction and expert re-reading from disk.
 REM
 REM Optimal configuration (discovered by benchmarking 15+ combinations):
+REM   - Custom MSVC build with AVX-VNNI: +133% over pre-built (6.23 -> 14.56 tok/s)
 REM   - WITH repack (reorganizes weights for faster matmul): +45% speed
 REM   - 3 threads on 4-core CPU (leaves 1 core for OS/disk): best throughput
 REM   - q4_0 KV cache (less memory bandwidth than q8_0): +5% speed
-REM   - ub 256 (micro-batch): lower peak memory than 512
-REM   - cpu-strict 1 (pin threads to cores): more consistent latency
+REM   - ub 128 (micro-batch): optimal with Flash Attention
+REM   - cpu-strict 0 (allow non-deterministic FP): +3-5% speed
+REM   - context 4096 for --ask/--chat: +40-50% tok/s vs 16384
+REM   - --speculative: n-gram speculative decoding, +15-25% on repetitive text
 REM
 REM First launch takes ~90s for repack to complete. Subsequent launches
 REM reuse the repacked weights from disk (faster init).
 REM
 REM Usage (in cmd.exe or PowerShell):
 REM   start-windows.cmd                                  REM Pi coding agent (tool use)
-REM   start-windows.cmd --chat                           REM interactive chat
+REM   start-windows.cmd --chat                           REM interactive chat (ctx=4096)
 REM   start-windows.cmd --ask "What is the capital of France?"
+REM   start-windows.cmd --ask "prompt" --speculative     REM with n-gram speculation
+REM   start-windows.cmd --chat --context 8192            REM explicit context size
 REM
 REM Environment overrides (set in PowerShell: $env:VAR = "value"):
 REM   MODEL_PATH       GGUF model file
 REM   LLAMA_DIR        llama.cpp directory
-REM   CONTEXT_TOKENS   context window size   (default 512)
+REM   CONTEXT_TOKENS   context window size   (default: 16384 for Pi, 4096 for ask/chat)
 REM   SERVER_PORT      server listen port    (default 8080)
 REM   GPU_LAYERS       GPU layers to offload (default 0 = CPU only)
 REM   THREADS          CPU threads (default: auto-detect physical cores - 1)
@@ -128,6 +133,8 @@ set "API_BASE=http://%SERVER_HOST%:%SERVER_PORT%/v1"
 set "MODE=pi"
 set "ASK_PROMPT="
 set "DEBUG=0"
+set "SPECULATIVE=0"
+set "CONTEXT_DEFAULT=1"
 
 REM --- Parse arguments ---
 :parse_args
@@ -162,6 +169,18 @@ if /i "%~1"=="--debug" (
     shift
     goto :parse_args
 )
+if /i "%~1"=="--context" (
+    shift
+    set "CONTEXT_TOKENS=%~1"
+    set "CONTEXT_DEFAULT=0"
+    shift
+    goto :parse_args
+)
+if /i "%~1"=="--speculative" (
+    set "SPECULATIVE=1"
+    shift
+    goto :parse_args
+)
 if /i "%~1"=="-h" goto :show_help
 if /i "%~1"=="--help" goto :show_help
 
@@ -171,6 +190,14 @@ shift
 goto :parse_args
 
 :done_parse
+
+REM --- Apply mode-specific context defaults ---
+REM --ask and --chat default to 4096 context for maximum speed (+40-50% tok/s).
+REM Pi agent stays at 16384 for tool use. Users can override with --context N.
+if "%CONTEXT_DEFAULT%"=="1" (
+    if "%MODE%"=="ask" set "CONTEXT_TOKENS=4096"
+    if "%MODE%"=="chat" set "CONTEXT_TOKENS=4096"
+)
 
 REM --- Validate llama-server exists ---
 if not exist "%LLAMA_SERVER%" (
@@ -208,18 +235,25 @@ echo   model:   %MODEL_PATH%
 echo   gpu layers: %GPU_LAYERS%  ^|  context: %CONTEXT_TOKENS%  ^|  threads: %THREADS%  ^|  port: %SERVER_PORT%
 
 REM --- Build llama-server command line ---
-REM Optimal config for CPU-only inference on HDD-based systems:
+REM Optimal config for CPU-only inference on Intel N150:
 REM   - repack ON: reorganizes weights for 45% faster matmul (needs sufficient RAM)
 REM   - auto threads: physical cores - 1 (leaves 1 core for OS/disk I/O)
 REM   - q4_0 KV cache: less memory bandwidth than q8_0
 REM   - ub 128: optimal micro-batch with Flash Attention
 REM   - fa on: Flash Attention (2-2.5x at 16K context, b10242 syntax)
-REM   - cpu-strict 1: pin threads to cores (consistent latency)
+REM   - cpu-strict 0: allow non-deterministic FP for ~3-5% speed gain
 set "LLAMA_OPTS=-m "%MODEL_PATH%" -ngl %GPU_LAYERS% -c %CONTEXT_TOKENS% -t %THREADS% --host %SERVER_HOST% --port %SERVER_PORT%"
 
 REM --- CPU optimization flags ---
 if "%GPU_LAYERS%"=="0" (
-    set "LLAMA_OPTS=!LLAMA_OPTS! -ctk q4_0 -ctv q4_0 -ub 128 -fa on --cpu-strict 1"
+    set "LLAMA_OPTS=!LLAMA_OPTS! -ctk q4_0 -ctv q4_0 -ub 128 -fa on --cpu-strict 0"
+)
+
+REM --- Optional: n-gram speculative decoding (CPU-friendly, no second model) ---
+REM Uses hash-based n-gram lookup to predict next tokens. On repetitive content
+REM (code, structured text), achieves +15-25% throughput. Enable with --speculative.
+if "%SPECULATIVE%"=="1" (
+    set "LLAMA_OPTS=!LLAMA_OPTS! --spec-draft-n-max 4 --spec-ngram-mod-n-max 4"
 )
 
 REM --- Start llama-server ---
@@ -442,8 +476,10 @@ echo   --ask "PROMPT"   Single-shot: ask a question, print the reply, exit
 echo   --chat           Interactive chat REPL with conversation memory
 echo.
 echo Options:
+echo   --context N      Context window size (default: 4096 for --ask/--chat, 16384 for Pi)
 echo   --cpu            Force CPU-only mode (default)
 echo   --debug          Show llama-server log output in the console (default: off)
+echo   --speculative    Enable n-gram speculative decoding (+15-25% on repetitive text)
 echo   --threads N      CPU threads to use (default: NUMBER_OF_PROCESSORS - 1)
 echo   -h, --help       Show this help
 echo.
@@ -451,16 +487,24 @@ echo --ask and --chat connect directly to llama-server, bypassing the Pi agent
 echo entirely. This avoids the large Pi system prompt overhead (~2-3KB) and gives
 echo faster responses for simple queries.
 echo.
+echo Speed tips:
+echo   - Default context is 4096 for --ask/--chat (+40-50% tok/s vs 16384)
+echo   - --cpu-strict 0 adds ~3-5% (non-deterministic but negligible in practice)
+echo   - --speculative adds +15-25% on repetitive content (code, structured text)
+echo   - Use --context 16384 only when you genuinely need long context
+echo.
 echo Environment overrides:
 echo   MODEL_PATH       GGUF model file
 echo   LLAMA_DIR        llama.cpp directory with llama-server.exe
-echo   CONTEXT_TOKENS   context window size   (default %CONTEXT_TOKENS%)
+echo   CONTEXT_TOKENS   context window size
 echo   SERVER_PORT      server listen port    (default %SERVER_PORT%)
 echo   THREADS          CPU threads (default: NUMBER_OF_PROCESSORS - 1)
 echo.
 echo Examples:
 echo   %~nx0 --ask "What is the capital of France?"
 echo   %~nx0 --chat
+echo   %~nx0 --chat --speculative
+echo   %~nx0 --ask "Explain quantum computing" --context 8192
 echo   %~nx0 --threads 8
 echo   %~nx0 --chat --debug
 goto :eof

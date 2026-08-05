@@ -14,7 +14,7 @@ $ErrorActionPreference = "SilentlyContinue"
 $buildDir = "C:\Users\Paul\llama-build"
 $sourceDir = "$buildDir\llama.cpp"
 $installDir = "C:\Users\Paul\llama-b10242"
-$branch = "b10242"  # Must match the b10242 pre-built binaries
+$branch = "master"  # Latest: includes sampler optimizations (PR #22645, +50% on Gemma)
 $vcvars = "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat"
 
 # Fallback: try other VS editions

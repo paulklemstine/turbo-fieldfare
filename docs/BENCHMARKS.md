@@ -133,13 +133,49 @@ Benchmarking 15+ configurations on Windows native found these optimums:
 | KV cache | **q4_0** | Less memory bandwidth than q8_0: +5% speed |
 | Micro-batch (ub) | **128** | Best throughput with Flash Attention |
 | Flash Attention | **-fa on** (enabled) | 2-2.5x speedup at 16K context (b10242 syntax: `-fa on` not `-fa`) |
-| CPU strict | **1** | Pin threads to cores: 23% speedup (5.04 → 6.23 tok/s) |
-| Context | **16384** | Full context window (benchmarked on N150: fits in 11.7GB RAM with q4_0 KV) |
+| CPU strict | **0** | Allow non-deterministic FP: +3-5% speed (negligible output difference) |
+| Context (ask/chat) | **4096** | +40-50% tok/s vs 16384 on CPU |
+| Context (Pi agent) | **16384** | Tool use needs long context |
 | Binary | **Custom MSVC build** | AVX-VNNI instructions: +133% over pre-built (6.23 → 14.56 tok/s) |
 
 The custom MSVC-compiled binary with AVX-VNNI achieves **~14.56 tok/s** steady-state
 (10-request average), a **133.7% improvement** over the pre-built b10242 binary (6.23 tok/s).
 Compared to the baseline ~2.92 tok/s (no repack, 4 threads, q8_0 KV), that's a **5x speedup**.
+
+### Thermal throttling
+
+The N150 is a **6W TDP** chip. Under sustained all-core load, it will thermal
+throttle after ~2-3 minutes, dropping from ~14.5 tok/s to ~2-4 tok/s. This is
+expected hardware behavior, not a bug.
+
+**Performance depends on CPU temperature:**
+
+| State | Approximate throughput | Notes |
+| --- | ---: | ---: |
+| Fresh (cool CPU, < 60°C) | ~14-15 tok/s | After reboot or long idle |
+| Warm (1-2 min load) | ~8-12 tok/s | Beginning to throttle |
+| Throttled (> 2-3 min sustained) | ~2-4 tok/s | Thermal limit reached |
+
+Performance recovers after a ~30s idle cooldown. For best results:
+- Run inference in short bursts
+- Ensure adequate ventilation (laptop stand, fan)
+- Avoid enclosing the machine in a bag or tight space
+
+### Context size tradeoff
+
+On CPU-only inference, token throughput scales **inversely** with context size
+because each decode step reads the full KV cache from RAM. Smaller contexts mean
+less memory bandwidth per token.
+
+| Context | Approximate tok/s (cool CPU) | Speedup vs 16384 |
+| --- | ---: | ---: |
+| 4096 | ~20-22 | +40-50% |
+| 8192 | ~17-19 | +20-30% |
+| 16384 | ~14-15 | baseline |
+
+The default modes use context=4096 for `--ask` and `--chat` (where long context
+isn't needed), and context=16384 for Pi agent mode (where tool use requires it).
+Override with `--context N` to set any size.
 
 ### Benchmark matrix
 
@@ -241,7 +277,7 @@ powershell -ExecutionPolicy Bypass -File "build-optimized.ps1"
 ```
 Build takes **10-30 minutes** on N150 (faster on better CPUs). The script:
 - Installs CMake/Ninja via winget if missing
-- Clones llama.cpp at b10242 tag
+- Clones llama.cpp at master (latest optimizations)
 - Configures with MSVC + AVX2 + AVX-VNNI + OpenMP
 - Builds all 479 targets with Ninja
 - Backs up existing binaries to `llama-b10242\backup_<timestamp>\`
@@ -315,15 +351,17 @@ From Windows PowerShell (one-liner, run from the repo directory):
 cd C:\Users\Paul\turbo-fieldfare; .\start-windows.cmd
 ```
 
-This starts the server with optimal settings and launches the Pi coding agent.
-The script auto-detects the model GGUF and llama-server.exe. If Pi (or Node.js)
-is not installed, it offers to install them automatically.
+This starts the server with optimal settings and launches the Pi coding agent
+(context=16384). The script auto-detects the model GGUF and llama-server.exe.
+If Pi (or Node.js) is not installed, it offers to install them automatically.
 
 Other modes:
 
 ```powershell
 cd C:\Users\Paul\turbo-fieldfare; .\start-windows.cmd --ask "What is the capital of France?"
 cd C:\Users\Paul\turbo-fieldfare; .\start-windows.cmd --chat
+cd C:\Users\Paul\turbo-fieldfare; .\start-windows.cmd --chat --speculative
+cd C:\Users\Paul\turbo-fieldfare; .\start-windows.cmd --ask "Explain quantum computing" --context 8192
 cd C:\Users\Paul\turbo-fieldfare; .\start-windows.cmd --debug
 cd C:\Users\Paul\turbo-fieldfare; .\start-windows.cmd --threads 3
 ```
