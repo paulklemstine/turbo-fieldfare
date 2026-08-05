@@ -124,6 +124,7 @@ if not defined GPU_LAYERS set "GPU_LAYERS=0"
 
 set "LLAMA_SERVER=%LLAMA_DIR%\llama-server.exe"
 set "SERVER_HOST=127.0.0.1"
+set "API_BASE=http://%SERVER_HOST%:%SERVER_PORT%/v1"
 set "MODE=pi"
 set "ASK_PROMPT="
 set "DEBUG=0"
@@ -263,16 +264,20 @@ exit /b 1
 echo Server ready on port %SERVER_PORT%.
 
 REM --- Launch appropriate client ---
+REM --ask and --chat bypass the Pi agent entirely, connecting directly to
+REM llama-server. This avoids the large Pi system prompt overhead (~2-3KB)
+REM and gives faster responses for simple queries.
 if "%MODE%"=="ask" (
     if "%ASK_PROMPT%"=="" (
         echo ERROR: --ask requires a prompt.
         exit /b 1
     )
     echo Asking Gemma 4: %ASK_PROMPT%
+    echo.
     if exist "%REPO_DIR%\Scripts\chat.py" (
-        python "%REPO_DIR%\Scripts\chat.py" --ask "%ASK_PROMPT%"
+        python "%REPO_DIR%\Scripts\chat.py" --ask "%ASK_PROMPT%" --base-url "%API_BASE%"
     ) else (
-        echo Chat script not found. Server is running at http://%SERVER_HOST%:%SERVER_PORT%
+        echo chat.py not found. Server is running at %API_BASE%
         echo Use curl or any OpenAI-compatible client to send requests.
     )
     goto :eof
@@ -280,10 +285,11 @@ if "%MODE%"=="ask" (
 
 if "%MODE%"=="chat" (
     echo Starting interactive chat with Gemma 4 ...
+    echo.
     if exist "%REPO_DIR%\Scripts\chat.py" (
-        python "%REPO_DIR%\Scripts/chat.py" --chat %POSITIONAL_ARGS%
+        python "%REPO_DIR%\Scripts\chat.py" --chat --base-url "%API_BASE%" %POSITIONAL_ARGS%
     ) else (
-        echo Chat script not found. Server is running at http://%SERVER_HOST%:%SERVER_PORT%
+        echo chat.py not found. Server is running at %API_BASE%
         echo Use curl or any OpenAI-compatible client to send requests.
     )
     goto :eof
@@ -430,12 +436,20 @@ echo Usage: %~nx0 [options]
 echo.
 echo Starts the llama.cpp Gemma 4 server/client on Windows.
 echo.
-echo   --ask "PROMPT"   Run a single prompt against the model and print the reply
-echo   --chat           Start an interactive chat session directly with the model
+echo Modes:
+echo   (none)           Start server, then launch Pi coding agent (tool use)
+echo   --ask "PROMPT"   Single-shot: ask a question, print the reply, exit
+echo   --chat           Interactive chat REPL with conversation memory
+echo.
+echo Options:
 echo   --cpu            Force CPU-only mode (default)
 echo   --debug          Show llama-server log output in the console (default: off)
 echo   --threads N      CPU threads to use (default: NUMBER_OF_PROCESSORS - 1)
 echo   -h, --help       Show this help
+echo.
+echo --ask and --chat connect directly to llama-server, bypassing the Pi agent
+echo entirely. This avoids the large Pi system prompt overhead (~2-3KB) and gives
+echo faster responses for simple queries.
 echo.
 echo Environment overrides:
 echo   MODEL_PATH       GGUF model file
@@ -448,4 +462,5 @@ echo Examples:
 echo   %~nx0 --ask "What is the capital of France?"
 echo   %~nx0 --chat
 echo   %~nx0 --threads 8
+echo   %~nx0 --chat --debug
 goto :eof
