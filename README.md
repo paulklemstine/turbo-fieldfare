@@ -224,7 +224,7 @@ to a different GGUF, or rebuild llama.cpp with different flags.
 The launcher auto-detects the model and llama-server.exe. It starts the server
 with these optimal flags:
 ```
--ngl 0 -t 3 -ctk q4_0 -ctv q4_0 -ub 128 -fa on --cpu-strict 0
+-ngl 0 -t 3 -ctk q4_0 -ctv q4_0 -ub 128 -fa on --cpu-strict 1 --cpu-range 0-2
 ```
 Plus context size: **4096** for `--ask`/`--chat` modes (fast), **16384** for Pi
 agent mode (tool use). Override with `--context N`.
@@ -237,6 +237,7 @@ it in the console.
 | Mode | Command | Default context | Use case |
 | ---- | ------- | -------------- | -------- |
 | Pi agent | `.\start-windows.cmd` | 16384 | Coding tasks, tool use |
+| Warm Pi agent | `.\start-windows.cmd --warm` | 16384 | Keep server alive between sessions |
 | Interactive chat | `.\start-windows.cmd --chat` | 4096 | Fast back-and-forth |
 | Single prompt | `.\start-windows.cmd --ask "Hello!"` | 4096 | One-shot queries |
 
@@ -256,6 +257,21 @@ For best performance:
 - Ensure adequate ventilation
 - Reduce context to 4096 when you don't need long context (`+40-50%` speed)
 - Use `--speculative` for repetitive content (`+15-25%` on code/structured text)
+- Use `--warm` to keep server alive between sessions (skip 10-90s model reload)
+
+### Warm server mode
+
+By default, the server exits when the client (`pi` or `chat.py`) exits. This
+means each new session pays the full model reload cost (~10s with repack cache,
+~90s cold).
+
+With `--warm`, the server **stays running** after the client exits. The next time
+you run the script, it detects the existing server and connects immediately
+(no reload). llama-server's built-in **prefix caching** (LCP similarity) also
+means the system prompt's KV cache is reused across sessions — Turn 1 of the new
+session skips the ~3KB system prompt prefill.
+
+The server keeps running until you press any key in the warm mode window.
 
 ---
 

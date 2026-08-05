@@ -20,12 +20,12 @@ REM
 REM Optimal configuration (discovered by benchmarking 15+ combinations):
 REM   - Custom MSVC build with AVX-VNNI: +133% over pre-built (6.23 -> 14.56 tok/s)
 REM   - WITH repack (reorganizes weights for faster matmul): +45% speed
-REM   - 3 threads on 4-core CPU (leaves 1 core for OS/disk): best throughput
+REM   - 3 threads pinned to cores (cpu-strict 1 + cpu-range): +5-15% speed
 REM   - q4_0 KV cache (less memory bandwidth than q8_0): +5% speed
 REM   - ub 128 (micro-batch): optimal with Flash Attention
-REM   - cpu-strict 0 (allow non-deterministic FP): +3-5% speed
 REM   - context 4096 for --ask/--chat: +40-50% tok/s vs 16384
 REM   - --speculative: n-gram speculative decoding, +15-25% on repetitive text
+REM   - --warm: keep server alive between sessions (skip model reload next time)
 REM
 REM First launch takes ~90s for repack to complete. Subsequent launches
 REM reuse the repacked weights from disk (faster init).
@@ -36,6 +36,7 @@ REM   start-windows.cmd --chat                           REM interactive chat (c
 REM   start-windows.cmd --ask "What is the capital of France?"
 REM   start-windows.cmd --ask "prompt" --speculative     REM with n-gram speculation
 REM   start-windows.cmd --chat --context 8192            REM explicit context size
+REM   start-windows.cmd --warm                           REM keep server warm between sessions
 REM
 REM Environment overrides (set in PowerShell: $env:VAR = "value"):
 REM   MODEL_PATH       GGUF model file
@@ -135,6 +136,7 @@ set "ASK_PROMPT="
 set "DEBUG=0"
 set "SPECULATIVE=0"
 set "CONTEXT_DEFAULT=1"
+set "WARM=0"
 
 REM --- Parse arguments ---
 :parse_args
@@ -178,6 +180,11 @@ if /i "%~1"=="--context" (
 )
 if /i "%~1"=="--speculative" (
     set "SPECULATIVE=1"
+    shift
+    goto :parse_args
+)
+if /i "%~1"=="--warm" (
+    set "WARM=1"
     shift
     goto :parse_args
 )
@@ -241,19 +248,21 @@ REM   - auto threads: physical cores - 1 (leaves 1 core for OS/disk I/O)
 REM   - q4_0 KV cache: less memory bandwidth than q8_0
 REM   - ub 128: optimal micro-batch with Flash Attention
 REM   - fa on: Flash Attention (2-2.5x at 16K context, b10242 syntax)
-REM   - cpu-strict 0: allow non-deterministic FP for ~3-5% speed gain
+REM   - cpu-strict 1 + cpu-range 0-2: pin threads for ~5-15% speed gain
 set "LLAMA_OPTS=-m "%MODEL_PATH%" -ngl %GPU_LAYERS% -c %CONTEXT_TOKENS% -t %THREADS% --host %SERVER_HOST% --port %SERVER_PORT%"
 
 REM --- CPU optimization flags ---
+REM cpu-strict 1 + cpu-range: pin threads to specific cores for +5-15% speed
+REM (reduces cache misses vs letting OS scheduler migrate threads)
 if "%GPU_LAYERS%"=="0" (
-    set "LLAMA_OPTS=!LLAMA_OPTS! -ctk q4_0 -ctv q4_0 -ub 128 -fa on --cpu-strict 0"
+    set "LLAMA_OPTS=!LLAMA_OPTS! -ctk q4_0 -ctv q4_0 -ub 128 -fa on --cpu-strict 1 --cpu-range 0-2"
 )
 
 REM --- Optional: n-gram speculative decoding (CPU-friendly, no second model) ---
 REM Uses hash-based n-gram lookup to predict next tokens. On repetitive content
 REM (code, structured text), achieves +15-25% throughput. Enable with --speculative.
 if "%SPECULATIVE%"=="1" (
-    set "LLAMA_OPTS=!LLAMA_OPTS! --spec-draft-n-max 4 --spec-ngram-mod-n-max 4"
+    set "LLAMA_OPTS=!LLAMA_OPTS! --spec-type ngram-mod --spec-ngram-mod-n-match 24 --spec-ngram-mod-n-min 48 --spec-ngram-mod-n-max 64 --spec-draft-n-max 4"
 )
 
 REM --- Start llama-server ---
@@ -374,6 +383,15 @@ set PI_TELEMETRY=0
 where pi >nul 2>&1
 if not errorlevel 1 (
     pi --model turbofieldfare/gemma-4-26b-a4b-it
+    if "%WARM%"=="1" (
+        echo.
+        echo Pi agent exited. Server is still running (warm mode).
+        echo Press any key to stop the server and exit...
+        pause >nul
+        echo Stopping server...
+        taskkill /F /IM llama-server.exe >nul 2>&1
+        echo Server stopped.
+    )
     goto :eof
 )
 
@@ -481,6 +499,7 @@ echo   --cpu            Force CPU-only mode (default)
 echo   --debug          Show llama-server log output in the console (default: off)
 echo   --speculative    Enable n-gram speculative decoding (+15-25% on repetitive text)
 echo   --threads N      CPU threads to use (default: NUMBER_OF_PROCESSORS - 1)
+echo   --warm           Keep server running after client exits (skip reload next time)
 echo   -h, --help       Show this help
 echo.
 echo --ask and --chat connect directly to llama-server, bypassing the Pi agent
@@ -489,8 +508,9 @@ echo faster responses for simple queries.
 echo.
 echo Speed tips:
 echo   - Default context is 4096 for --ask/--chat (+40-50% tok/s vs 16384)
-echo   - --cpu-strict 0 adds ~3-5% (non-deterministic but negligible in practice)
+echo   - Thread pinning (--cpu-strict 1 + --cpu-range) adds +5-15%
 echo   - --speculative adds +15-25% on repetitive content (code, structured text)
+echo   - --warm keeps server alive between sessions (skip 10-90s model reload)
 echo   - Use --context 16384 only when you genuinely need long context
 echo.
 echo Environment overrides:
@@ -505,6 +525,7 @@ echo   %~nx0 --ask "What is the capital of France?"
 echo   %~nx0 --chat
 echo   %~nx0 --chat --speculative
 echo   %~nx0 --ask "Explain quantum computing" --context 8192
+echo   %~nx0 --warm
 echo   %~nx0 --threads 8
 echo   %~nx0 --chat --debug
 goto :eof
