@@ -160,8 +160,16 @@ These configurations were tested, each with a warmup + 5 measured requests:
 | Repack, 3t, q4_0, ub 512 | 3.61 tok/s | Larger ub hurts |
 | Repack, 3t, q4_0, ctx 256 | 3.03 tok/s | Small context hurts |
 
-First launch with repack takes ~90 seconds (reorganizes and writes repacked
-weights to disk). Subsequent launches reuse those weights and start faster.
+**Repack is a one-time operation.** The first launch takes ~90 seconds because
+llama.cpp reorganizes the weight tensors for faster matmul and writes them to a
+`.repack` cache file alongside the GGUF (e.g., `gemma-4-26B-A4B-it.Q4_0.gguf.repack`).
+**All subsequent launches reuse this cache** and start in ~10s. The repack only
+re-runs if you:
+- Delete the `.repack` file
+- Switch to a different GGUF
+- Rebuild llama.cpp with different flags
+
+This persists across reboots — you only endure the 90s once.
 
 ### Custom AVX-VNNI build (+133% over pre-built)
 

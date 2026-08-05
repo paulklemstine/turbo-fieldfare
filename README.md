@@ -215,6 +215,12 @@ for full build details and expected results by CPU.
 .\start-windows.cmd --debug              # Show server logs in console
 ```
 
+**First launch** takes ~90s because llama.cpp repacks the weight tensors for
+faster matrix multiplication. It saves the repacked weights to a `.repack`
+cache file alongside the GGUF. **All subsequent launches reuse this cache** and
+start in ~10s. The repack only re-runs if you delete the `.repack` file, switch
+to a different GGUF, or rebuild llama.cpp with different flags.
+
 The launcher auto-detects the model and llama-server.exe. It starts the server
 with these optimal flags:
 ```
