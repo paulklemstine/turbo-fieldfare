@@ -87,15 +87,24 @@ npm install -g --ignore-scripts @earendil-works/pi-coding-agent
 
 ## Linux (NVIDIA GPU)
 
-On Linux with an NVIDIA GPU, `start.sh` dispatches to `start-linux.sh`, which
-runs the same Gemma 4 26B-A4B model on **llama.cpp + CUDA** instead of the
-Swift/Metal backend. The modes, the OpenAI-compatible server on port `8080`,
-and the Pi agent setup are identical to the Mac path — only the inference
-engine changes.
+On Linux with an NVIDIA GPU, `start.sh` dispatches to `start-linux-gpu.sh`,
+which runs the same Gemma 4 26B-A4B model on **llama.cpp + CUDA** instead of
+the Swift/Metal backend. The modes, the OpenAI-compatible server on port
+`8080`, and the Pi agent setup are identical to the Mac path — only the
+inference engine changes.
 
 This is the spiritual counterpart to the Mac version's expert-streaming trick:
 llama.cpp keeps a small resident core on the GPU and runs the rest on the CPU
 (`-ngl` layers), so the ~10.7 GB model fits in a 6 GB VRAM GPU + system RAM.
+
+**Max-context-first auto-configuration:** `start-linux-gpu.sh` detects your
+NVIDIA VRAM via `nvidia-smi` and computes the configuration that delivers the
+**largest context window first**, then max token/second within that. On an
+RTX 4050 (6 GB) with the Q2_K quant this defaults to **5 GPU layers + the
+full native 262K context** at `q4_0` KV cache — empirically the highest layer
+count that still reaches the model's native context. Override with `GPU_LAYERS`
+or `KV_TYPE` to shift the balance (see [GPU
+scripts](start-linux-gpu.sh)).
 
 ### Requirements (GPU)
 
@@ -141,11 +150,13 @@ snapshot_download(
 ./start.sh --ask "What is the capital of France?"   # single prompt
 ```
 
-Override the GPU layer count to fit your VRAM (default `18` is tuned for a
-6 GB card):
+The default auto-config picks the highest GPU layer count that still reaches
+the model's native 262K context (ngl=5 on a 6 GB card). Override to shift the
+balance:
 
 ```bash
-GPU_LAYERS=15 ./start.sh --chat
+GPU_LAYERS=10 ./start.sh --chat     # favor speed (~154K ctx on 6 GB)
+KV_TYPE=q8_0 ./start.sh --chat      # favor quality (~half context)
 ```
 
 > **WSL2 note:** if `llama-cli`/`llama-server` segfault at CUDA init, the
@@ -162,6 +173,13 @@ On Windows native, llama.cpp runs 6.4x faster than WSL2 due to more RAM
 available for the OS page cache. With a custom MSVC-compiled binary using
 **AVX-VNNI** instructions, this reaches **~14.5 tok/s** — a **+133% improvement**
 over the pre-built binary.
+
+**If you have an NVIDIA GPU**, use
+[`start-windows-gpu.cmd`](start-windows-gpu.cmd) instead — it auto-detects your
+VRAM and runs llama.cpp + CUDA with max-context-first auto-configuration (see
+[Linux (NVIDIA GPU)](#linux-nvidia-gpu) for the same logic on Linux). The
+`start-windows.cmd` path below is the CPU-only fallback for machines without a
+discrete GPU.
 
 ### Requirements (Windows)
 
@@ -262,6 +280,41 @@ For best performance:
 - Speculative decoding is ON by default (`+15-25%` on code/structured text)
 - Warm mode is ON by default (skip 10-90s model reload between sessions)
 - Use `--no-speculative` or `--no-warm` to measure baseline without optimizations
+
+### Expert-cache warmup (GPU and CPU paths)
+
+The llama.cpp build uses `MADV_DONTNEED` on expert-weight pages after loading:
+the OS page cache holds recently-used experts in RAM and evicts cold ones to
+disk. This lets the ~10.5 GB model run on limited RAM, but it means the **first
+inference is always cold** — experts fault back from disk (~0.58 tok/s on the
+test box, ~480K page faults).
+
+Measured on an RTX 4050 (6 GB) + 11 GB RAM with the Q2_K quant:
+
+| Condition | tok/s | Major page faults | Disk read |
+| --------- | ----- | ----------------- | --------- |
+| Cold start (1st inference) | 0.58 | 481K | 1.96 GB |
+| Warm (2nd, same topic) | 4.82 | 14K | 52 MB |
+| Warm (3rd+) | **17-18** | **0** | **0** |
+| Topic switch | 0.86 | 83K | 309 MB |
+
+**Same topic stays hot (18 tok/s, zero disk I/O); a topic switch re-cold-starts
+the cache.** Expert locality is extreme and topic-dependent, so sustained work in
+any one domain (coding, research, etc.) runs at full speed after the first few
+tokens.
+
+All launchers run a **throwaway warmup inference** after load (`WARMUP=1`,
+default on) so your *first real* query lands in the warm-cache regime at 17-18
+tok/s instead of the cold 0.58 tok/s. Disable with `WARMUP=0` to measure the raw
+cold start.
+
+The `RAM_CACHE=1` default additionally pre-reads the model to warm the OS page
+cache; it helps but can't eliminate the cold start because `MADV_DONTNEED` still
+forces re-fault on first access.
+
+Keeping the server alive between sessions (warm mode) also keeps the expert
+cache warm — the fastest way to work is one long warm session, not many short
+cold ones.
 
 ### Warm server mode
 

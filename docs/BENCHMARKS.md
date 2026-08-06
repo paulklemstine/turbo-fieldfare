@@ -122,6 +122,25 @@ With only 5.7 GB, WSL2 cannot hold the working set in RAM. Expert weights are
 constantly evicted and re-read from the HDD. Windows native's 11.7 GB lets
 the page cache retain most of the 14 GB model, reducing disk I/O dramatically.
 
+### GPU (RTX 4050 Laptop, 6 GB VRAM)
+
+The llama.cpp build uses `MADV_DONTNEED` on expert pages after load, so the OS
+page cache holds hot experts and evicts cold ones. This makes the **first
+inference cold** (~0.58 tok/s, ~480K major page faults) but subsequent
+same-topic inferences run at full speed (~17-18 tok/s, zero disk I/O). A topic
+switch re-cold-starts the cache. Measured with the Q2_K quant, ngl=5, ctx=4096:
+
+| Condition | tok/s | Major page faults | Disk read |
+| --------- | ----- | ----------------- | --------- |
+| Cold start (1st inference) | 0.58 | 481K | 1.96 GB |
+| Warm (2nd, same topic) | 4.82 | 14K | 52 MB |
+| Warm (3rd+) | **17-18** | **0** | **0** |
+| Topic switch | 0.86 | 83K | 309 MB |
+
+The launchers run a throwaway warmup inference after load (`WARMUP=1` default)
+so the user's first real query lands in the warm-cache regime. See
+[README.md](../README.md#expert-cache-warmup-gpu-and-cpu-paths).
+
 ### Optimal configuration
 
 Benchmarking 15+ configurations on Windows native found these optimums:
