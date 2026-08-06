@@ -454,6 +454,17 @@ exit /b 1
 :server_ready
 echo Server ready on port %SERVER_PORT%.
 
+REM --- Warmup inference: heat the expert cache --------------------------------
+REM A throwaway inference after load heats the OS page cache with the active
+REM experts, so the user's first REAL query runs at 17-18 tok/s instead of the
+REM 0.58 tok/s cold-start. Disable with WARMUP=0.
+if not defined WARMUP set "WARMUP=1"
+if "%WARMUP%"=="1" (
+    echo Warming up expert cache ^(throwaway inference^)...
+    curl.exe -s -m 120 -X POST http://%SERVER_HOST%:%SERVER_PORT%/completion -H "Content-Type: application/json" -d "{\"prompt\":\"The\",\"n_predict\":1,\"temperature\":0}" >nul 2>&1
+    echo Warmup done.
+)
+
 REM --- Launch appropriate client ---
 if "%MODE%"=="ask" (
     if "%ASK_PROMPT%"=="" (

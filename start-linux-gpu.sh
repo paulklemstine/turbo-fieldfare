@@ -180,8 +180,8 @@ Environment overrides:
   GPU_LAYERS       layers offloaded to GPU (default: auto = max-ctx optimum)
   CONTEXT_TOKENS   context window size   (default: auto = native 262K)
   KV_TYPE          q4_0 (max ctx) or q8_0 (max quality) (default q4_0)
-  RAM_CACHE        1=warm page cache + tune VM (default), 0=disable
-  RAM_MLOCK        1=pin model in RAM via mlock (needs ulimit -l raised)
+  RAM_CACHE        1=preheat page cache (default), 0=disable
+  WARMPUP          1=run a warmup inference after load to heat expert cache (default)
   SERVER_PORT      server listen port    (default $SERVER_PORT)
 
 Examples:
@@ -379,7 +379,7 @@ ensure_server_running() {
     local ready=0
     for i in $(seq 1 600); do
         if curl -s -m 2 "http://${SERVER_HOST}:${SERVER_PORT}/health" | grep -q '"status":"ok"'; then
-            log_info "-> Model ready."; ready=1; break
+            log_info "-> Model ready."; ready=1; warmup_inference "$SERVER_PID"; break
         fi
         [ -n "${SERVER_PID:-}" ] && ! kill -0 "$SERVER_PID" 2>/dev/null && {
             echo "ERROR: Server crashed during startup. Check $REPO_DIR/llama_server.log" >&2; exit 1
@@ -392,8 +392,41 @@ ensure_server_running() {
     }
 }
 
-# Warm the OS page cache / pin experts in RAM before serving requests so that
-# expert loads hit RAM instead of faulting from the slow /mnt/e disk.
+# --- Expert cache warmup -----------------------------------------------------
+# Measured on RTX 4050 + 11GB RAM + Q2_K Gemma 4 26B-A4B (2026-08-06):
+# The custom build MADV_DONTNEEDs expert pages after load, so the FIRST
+# inference is always cold (0.58 tok/s, ~480K major page faults). The SECOND
+# same-topic inference jumps to ~5 tok/s, and by the third it's 17-18 tok/s with
+# ZERO disk I/O — the OS page cache now holds the active experts. A topic
+# switch re-cold-starts the cache (~0.86 tok/s).
+#
+# Two levers, both optional:
+#   RAM_CACHE=1 (default): preheat the OS page cache with a sequential read so
+#     the first expert accesses hit RAM, not the slow disk. Helps cold-start
+#     but can't eliminate it (MADV_DONTNEED still forces re-fault).
+#   WARMUP=1 (default): run a throwaway inference after load to heat the expert
+#     cache BEFORE the user's first real query. Turns a 0.58 tok/s cold start
+#     into 17-18 tok/s for the actual work. Costs ~5s.
+ram_cache_preheat() {
+    [ "${RAM_CACHE:-1}" = "0" ] && return 0
+    if [ -f "$MODEL_PATH" ]; then
+        log_info "-> RAM cache: preheating page cache (sequential read)..."
+        dd if="$MODEL_PATH" of=/dev/null bs=64M 2>/dev/null || true
+    fi
+}
+warmup_inference() {
+    [ "${WARMUP:-1}" = "0" ] && return 0
+    local pid=$1
+    log_info "-> Warmup: heating expert cache (throwaway inference)..."
+    local body='{"prompt":"The","n_predict":1,"temperature":0,"stream":false}'
+    local t0=$(date +%s%N)
+    curl -s -m 120 -X POST "http://127.0.0.1:${SERVER_PORT}/completion" \
+        -H 'Content-Type: application/json' -d "$body" >/dev/null 2>&1 || true
+    local t1=$(date +%s%N)
+    local ms=$(( (t1-t0)/1000000 ))
+    log_info "-> Warmup done (${ms}ms). Expert cache is now warm."
+}
+
 ram_cache_preheat
 
 if [ "$MODE" = "ask" ] || [ "$MODE" = "chat" ]; then
