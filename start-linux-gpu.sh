@@ -180,6 +180,8 @@ Environment overrides:
   GPU_LAYERS       layers offloaded to GPU (default: auto = max-ctx optimum)
   CONTEXT_TOKENS   context window size   (default: auto = native 262K)
   KV_TYPE          q4_0 (max ctx) or q8_0 (max quality) (default q4_0)
+  RAM_CACHE        1=warm page cache + tune VM (default), 0=disable
+  RAM_MLOCK        1=pin model in RAM via mlock (needs ulimit -l raised)
   SERVER_PORT      server listen port    (default $SERVER_PORT)
 
 Examples:
@@ -389,6 +391,10 @@ ensure_server_running() {
         echo "ERROR: Timed out waiting for Server on port $SERVER_PORT." >&2; exit 1
     }
 }
+
+# Warm the OS page cache / pin experts in RAM before serving requests so that
+# expert loads hit RAM instead of faulting from the slow /mnt/e disk.
+ram_cache_preheat
 
 if [ "$MODE" = "ask" ] || [ "$MODE" = "chat" ]; then
     ensure_server_running

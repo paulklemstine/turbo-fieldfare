@@ -292,6 +292,24 @@ echo   [ON] Thread pinning (cpu-strict 1, cpu-range 0-2)
 echo   [ON] Flash Attention, q4_0 KV cache, ub 128
 echo.
 
+REM --- RAM cache: warm the OS file cache so expert loads hit RAM, not disk -
+# The custom build MADV_DONTNEEDs expert pages after load. On Windows the OS
+# file cache holds hot experts in RAM and evicts cold ones to disk. With little
+# RAM headroom (11 GB - 10.5 GB model) and the model possibly on a slow drive,
+# cold experts fault from disk and stall inference. This pre-reads the model
+# sequentially to warm the file cache (fast sequential I/O) so each expert's
+# first load is a RAM hit. Enable with RAM_CACHE=1 (default) or RAM_CACHE=0.
+if not defined RAM_CACHE set "RAM_CACHE=1"
+if "%RAM_CACHE%"=="1" (
+    if exist "%MODEL_PATH%" (
+        echo Preheating model into OS file cache ...
+        powershell -NoProfile -Command "$s=New-Object System.IO.FileStream('%MODEL_PATH%','Open','Read','ReadWrite',67108864);$b=New-Object byte[] 67108864;while($s.Read($b,0,$b.Length)){};$s.Close()" >nul 2>&1
+        if errorlevel 1 (
+            echo   (preheat skipped — could not read model file)
+        )
+    )
+)
+
 REM --- Start llama-server ---
 echo Launching llama-server ...
 echo Configuration: %LLAMA_OPTS%
