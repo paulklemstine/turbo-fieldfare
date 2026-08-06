@@ -29,8 +29,18 @@ REM
 
 setlocal enabledelayedexpansion
 
-set "REPO_DIR=%~dp0"
-set "REPO_DIR=%REPO_DIR:~0,-1%"
+REM --- Determine script directory ---
+REM %~dp0 may be a UNC path under WSL2 interop (e.g. \\wsl.localhost\...)
+REM which cmd.exe can't use. In that case, cd to the script dir first.
+pushd "%~dp0" 2>nul
+if errorlevel 1 (
+    REM UNC path — use the full path we already have
+    set "REPO_DIR=%~dp0"
+    set "REPO_DIR=%REPO_DIR:~0,-1%"
+) else (
+    for /f "delims=" %%D in ("%CD%") do set "REPO_DIR=%%D"
+    popd
+)
 set "USE_THROTTLESTOP=1"
 set "EXTRA_ARGS="
 
@@ -61,15 +71,15 @@ for /f "tokens=2 delims=:(" %%a in (
 set "OLD_SCHEME=%OLD_SCHEME: =%"
 echo   Active scheme: %OLD_SCHEME%
 
+REM Parse the hex value from "Current AC Power Setting Index: 0x00000064"
+REM The hex value is the last token on the line
 for /f "tokens=*" %%a in (
-    'powercfg /query SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 2^>nul'
+    'powercfg /query SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 2^>nul ^| findstr /i "Current AC'
 ) do (
-    echo   %%a | findstr /i "Current AC" >nul
-    if not errorlevel 1 for /f "tokens=2" %%b in ("%%a") do (
-        set "OLD_THROTTLE_MAX=%%b"
-    )
+    for %%b in (%%a) do set "OLD_THROTTLE_MAX=%%b"
 )
-echo   Throttle max: %OLD_THROTTLE_MAX% (hex)
+if not defined OLD_THROTTLE_MAX set "OLD_THROTTLE_MAX=0x00000064"
+echo   Throttle max: %OLD_THROTTLE_MAX%
 
 REM --- Step 1: Enable Ultimate Performance or High Performance ---
 echo.
@@ -155,7 +165,7 @@ echo  Running benchmark with thermal optimizations active...
 echo ============================================================
 echo.
 
-call "%~dp0run-benchmark.cmd" %EXTRA_ARGS%
+call "%REPO_DIR%\run-benchmark.cmd" %EXTRA_ARGS%
 set "BENCH_EXIT=%ERRORLEVEL%"
 
 REM --- Restore original settings ---
@@ -164,6 +174,7 @@ echo Restoring original power settings...
 powercfg /setactive %OLD_SCHEME%
 if defined OLD_THROTTLE_MAX (
     powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX %OLD_THROTTLE_MAX%
+    powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX %OLD_THROTTLE_MAX%
 )
 powercfg /setactive SCHEME_CURRENT
 echo   Power plan restored to original.

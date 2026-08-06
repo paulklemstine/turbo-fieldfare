@@ -34,7 +34,8 @@ $ErrorActionPreference = "Stop"
 function Invoke-Cooldown {
     param([int]$Seconds = 30)
     Write-Host ""
-    Write-Host "  Cooling down ($Seconds s) — N150 thermal recovery..." `
+    $msg = "Cooling down - $Seconds s"
+    Write-Host "  $msg - N150 thermal recovery..." `
         -ForegroundColor DarkGray
     Start-Sleep -Seconds $Seconds
 }
@@ -82,7 +83,10 @@ function Start-LlamaServer {
             }
         } catch { }
         if ($i % 5 -eq 0) {
-            Write-Host "  Waiting... ($([int]$i * 2)s)" -ForegroundColor Gray
+            $elapsed = $i * 2
+            $w = "Waiting..."
+            $msg = "$w $elapsed seconds"
+            Write-Host "  $msg" -ForegroundColor Gray
         }
     }
     if (-not $ready) { throw "Server failed to start after 240s" }
