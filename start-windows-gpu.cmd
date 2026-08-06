@@ -1,12 +1,12 @@
 @echo off
 REM
-REM start-windows-gpu.cmd — Run Gemma 4 26B-A4B on Windows natively via llama.cpp + CUDA.
+REM start-windows-gpu.cmd -- Run Gemma 4 26B-A4B on Windows natively via llama.cpp + CUDA.
 REM
 REM GPU-accelerated, max-context-first counterpart to start-windows.cmd. The
 REM original script is CPU-only (-ngl 0), tuned for an Intel N150 with no
 REM discrete GPU. This version detects your NVIDIA VRAM and computes the
 REM configuration that delivers the LARGEST context window first, then max
-REM token/second speed within that — because a fast model you can't fit your
+REM token/second speed within that -- because a fast model you can't fit your
 REM work into is useless.
 REM
 REM Measured on the reference hardware (RTX 4050 laptop, 6141 MiB VRAM, Q2_K
@@ -31,7 +31,7 @@ REM       4  |   1354 MiB |         4287 MiB |   262K tok  (capped by native ctx
 REM       0  |      0 MiB |         5641 MiB |   262K tok  (CPU-only, capped)
 REM
 REM DEFAULT: this script picks the highest layer count that still reaches the
-REM model's full native context (262K tokens) — ngl=5 — so you get BOTH the
+REM model's full native context (262K tokens) -- ngl=5 -- so you get BOTH the
 REM maximum context AND CUDA speedup. Override with GPU_LAYERS if you want a
 REM different balance (see below).
 REM
@@ -100,12 +100,16 @@ set "NATIVE_CTX=262144"
 if not defined KV_TYPE set "KV_TYPE=q4_0"
 
 REM --- Detect NVIDIA GPU VRAM via nvidia-smi ---
+REM Write to a temp file first: for/f splits the inline command at commas,
+REM which breaks the --format=csv,noheader,nounits argument on Windows.
 set "TOTAL_VRAM_MB=0"
 where nvidia-smi >nul 2>&1
 if not errorlevel 1 (
-    for /f "tokens=*" %%a in ('nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2^>nul') do (
-        set "TOTAL_VRAM_MB=%%a"
+    nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits > "%TEMP%\turbofieldfare_vram.txt" 2>nul
+    if not errorlevel 1 (
+        set /p TOTAL_VRAM_MB=<"%TEMP%\turbofieldfare_vram.txt"
     )
+    del /f "%TEMP%\turbofieldfare_vram.txt" 2>nul
 )
 
 if %TOTAL_VRAM_MB% gtr 0 (
@@ -413,7 +417,7 @@ if "%RAM_CACHE%"=="1" (
         REM PowerShell sequential read warms the system file cache (standby list).
         powershell -NoProfile -Command "$s=New-Object System.IO.FileStream('%MODEL_PATH%','Open','Read','ReadWrite',67108864);$b=New-Object byte[] 67108864;while($s.Read($b,0,$b.Length)){};$s.Close()" >nul 2>&1
         if errorlevel 1 (
-            echo   (preheat skipped — could not read model file)
+            echo   (preheat skipped -- could not read model file)
         )
     )
 )

@@ -1,6 +1,6 @@
 @echo off
 REM
-REM start-windows.cmd — Run Gemma 4 26B-A4B on Windows natively via llama.cpp.
+REM start-windows.cmd -- Run Gemma 4 26B-A4B on Windows natively via llama.cpp.
 REM
 REM This is the Windows counterpart to start-linux.sh / start-mac.sh. It mirrors
 REM the same three modes and the same on-the-wire protocol (OpenAI-compatible
@@ -306,7 +306,7 @@ if "%RAM_CACHE%"=="1" (
         echo Preheating model into OS file cache ...
         powershell -NoProfile -Command "$s=New-Object System.IO.FileStream('%MODEL_PATH%','Open','Read','ReadWrite',67108864);$b=New-Object byte[] 67108864;while($s.Read($b,0,$b.Length)){};$s.Close()" >nul 2>&1
         if errorlevel 1 (
-            echo   (preheat skipped — could not read model file)
+            echo   (preheat skipped -- could not read model file)
         )
     )
 )
