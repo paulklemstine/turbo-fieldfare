@@ -301,13 +301,11 @@ goto :parse_args
 REM --- Validate llama-server exists ---
 if not exist "%LLAMA_SERVER%" (
     echo ERROR: llama-server.exe not found.
-    echo(
     echo Searched in:
     echo   - %%REPO_DIR%%\llama.cpp\build\bin\
     echo   - %%REPO_DIR%%\llama-b*/
     echo   - %%USERPROFILE%%\llama.cpp\build\bin\
     echo   - %%PATH%%
-    echo(
     echo Set LLAMA_DIR to your llama.cpp binary directory, e.g.:
     echo   set LLAMA_DIR=C:\path\to\llama.cpp\build\bin
     echo   start-windows-gpu.cmd
@@ -317,11 +315,9 @@ if not exist "%LLAMA_SERVER%" (
 REM --- Validate model exists ---
 if not exist "%MODEL_PATH%" (
     echo ERROR: model GGUF not found.
-    echo(
     echo Searched for gemma-*.gguf in:
     echo   - %%REPO_DIR%%\models\
     echo   - %%USERPROFILE%%\models\
-    echo(
     echo Set MODEL_PATH to your GGUF file, e.g.:
     echo   set MODEL_PATH=C:\path\to\gemma-4-26B-A4B-it.Q4_0.gguf
     echo   start-windows-gpu.cmd
@@ -367,7 +363,6 @@ if "%SPECULATIVE%"=="1" (
 )
 
 REM --- Show active optimizations ---
-echo(
 echo Active optimizations:
 if "%SPECULATIVE%"=="1" (
     echo   [ON]  N-gram speculative decoding ^(ngram-mod^)
@@ -384,7 +379,6 @@ if %GPU_LAYERS% gtr 0 (
 ) else (
     echo   [ON]  CPU-only: thread pinning ^(cpu-strict 1, cpu-range 0-2^), %KV_TYPE% KV, ub 128
 )
-echo(
 
 REM --- RAM cache: warm the OS file cache so expert loads hit RAM, not disk -
 REM The custom build MADV_DONTNEEDs expert pages after load. On Windows the OS
@@ -459,7 +453,6 @@ if "%MODE%"=="ask" (
         exit /b 1
     )
     echo Asking Gemma 4: %ASK_PROMPT%
-    echo(
     if exist "%REPO_DIR%\Scripts\chat.ps1" (
         powershell -NoProfile -ExecutionPolicy Bypass -File "%REPO_DIR%\Scripts\chat.ps1" --ask '%ASK_PROMPT%' --base-url "%API_BASE%"
     ) else (
@@ -471,7 +464,6 @@ if "%MODE%"=="ask" (
 
 if "%MODE%"=="chat" (
     echo Starting interactive chat with Gemma 4 ...
-    echo(
     if exist "%REPO_DIR%\Scripts\chat.ps1" (
         powershell -NoProfile -ExecutionPolicy Bypass -File "%REPO_DIR%\Scripts\chat.ps1" --chat --base-url "%API_BASE%"
     ) else (
@@ -482,7 +474,6 @@ if "%MODE%"=="chat" (
 )
 
 REM --- Default mode: start server, then launch Pi agent ---
-echo(
 echo Server is ready at http://%SERVER_HOST%:%SERVER_PORT%
 
 REM --- Ensure pi models.json points at this server ---
@@ -520,14 +511,12 @@ if not exist "%PI_MODELS_FILE%" (
 
 REM --- Launch Pi agent ---
 echo Launching Pi agent...
-echo(
 set PI_SKIP_VERSION_CHECK=1
 set PI_TELEMETRY=0
 where pi >nul 2>&1
 if not errorlevel 1 (
     pi --model turbofieldfare/gemma-4-26b-a4b-it
     if "%WARM%"=="1" (
-        echo(
         echo Pi agent exited. Server is still running (warm mode).
         echo Press any key to stop the server and exit...
         pause >nul
@@ -545,11 +534,9 @@ if errorlevel 1 (
     echo npm not found. Installing Node.js via winget...
     call winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements --silent --force
     if errorlevel 1 (
-        echo(
         echo ERROR: winget install failed. Install Node.js manually:
         echo   https://nodejs.org/
         echo   Then re-run this script.
-        echo(
         echo Server is still running at http://%SERVER_HOST%:%SERVER_PORT%
         goto :eof
     )
@@ -563,20 +550,16 @@ if exist "%ProgramFiles%\nodejs\node.exe" (
 if defined NODE_DIR (
     set "PATH=%PATH%;!NODE_DIR!"
 ) else (
-    echo(
     echo ERROR: Node.js installed but node.exe not found.
     echo   Close and reopen PowerShell, then re-run this script.
-    echo(
     echo Server is still running at http://%SERVER_HOST%:%SERVER_PORT%
     goto :eof
 )
 echo Installing Pi agent via npm...
 call npm install -g --ignore-scripts @earendil-works/pi-coding-agent >nul 2>&1
 if errorlevel 1 (
-    echo(
     echo ERROR: npm install failed. Try installing manually:
     echo   npm install -g --ignore-scripts @earendil-works/pi-coding-agent
-    echo(
     echo Server is still running at http://%SERVER_HOST%:%SERVER_PORT%
     goto :eof
 )
@@ -593,34 +576,27 @@ where pi >nul 2>&1
 if not errorlevel 1 (
     pi --model turbofieldfare/gemma-4-26b-a4b-it
     if errorlevel 1 (
-        echo(
         echo PowerShell execution policy may be blocking pi.
         echo Attempting to fix and retry...
-        echo(
         powershell -Command "Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force"
         pi --model turbofieldfare/gemma-4-26b-a4b-it
     )
 ) else (
-    echo(
     echo ERROR: Pi agent installed but not found in PATH.
     echo   Try closing and reopening PowerShell, then run:
     echo   pi --model turbofieldfare/gemma-4-26b-a4b-it
-    echo(
     echo Server is still running at http://%SERVER_HOST%:%SERVER_PORT%
 )
 goto :eof
 
 :show_help
 echo Usage: %~nx0 [options]
-echo(
 echo GPU-accelerated llama.cpp Gemma 4 server/client on Windows.
 echo Auto-detects NVIDIA VRAM and maximizes context window first, then speed.
-echo(
 echo Modes:
 echo   (none)           Start server, then launch Pi coding agent (tool use)
 echo   --ask "PROMPT"   Single-shot: ask a question, print the reply, exit
 echo   --chat           Interactive chat REPL with conversation memory
-echo(
 echo Options:
 echo   --context N      Context window size (default: auto = native 262K)
 echo   --cpu            Force CPU-only mode
@@ -632,17 +608,14 @@ echo   --threads N      CPU threads to use (default: NUMBER_OF_PROCESSORS - 1)
 echo   --warm           Keep server running after client exits (default: on)
 echo   --no-warm        Don't keep server running after client exits
 echo   -h, --help       Show this help
-echo(
 echo Max-context-first logic:
 echo   Default reaches the model's native 262K context with the highest GPU
 echo   layer count that fits (measured: ngl=5 on RTX 4050 / Q2_K). This gives
 echo   you the largest context AND CUDA speedup. Override to shift the balance:
-echo(
 echo   set GPU_LAYERS=10 ^& %~nx0     max speed (154K ctx)
 echo   set GPU_LAYERS=5  ^& %~nx0     native 262K ctx + GPU  [default]
 echo   set GPU_LAYERS=3  ^& %~nx0     min GPU, max RAM headroom
 echo   set KV_TYPE=q8_0 ^& %~nx0      better quality, ~half context
-echo(
 echo Environment overrides:
 echo   MODEL_PATH       GGUF model file
 echo   LLAMA_DIR        llama.cpp directory with llama-server.exe
@@ -651,7 +624,6 @@ echo   CONTEXT_TOKENS   context window size   (default: auto)
 echo   KV_TYPE          q4_0 (max ctx) or q8_0 (quality) (default q4_0)
 echo   SERVER_PORT      server listen port    (default 8080)
 echo   THREADS          CPU threads (default: NUMBER_OF_PROCESSORS - 1)
-echo(
 echo Examples:
 echo   %~nx0 --ask "Summarize the key points of this 200K-token document"
 echo   %~nx0 --chat
