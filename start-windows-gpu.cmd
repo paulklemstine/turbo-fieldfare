@@ -301,13 +301,13 @@ goto :parse_args
 REM --- Validate llama-server exists ---
 if not exist "%LLAMA_SERVER%" (
     echo ERROR: llama-server.exe not found.
-    echo.
+    echo(
     echo Searched in:
     echo   - %%REPO_DIR%%\llama.cpp\build\bin\
     echo   - %%REPO_DIR%%\llama-b*/
     echo   - %%USERPROFILE%%\llama.cpp\build\bin\
     echo   - %%PATH%%
-    echo.
+    echo(
     echo Set LLAMA_DIR to your llama.cpp binary directory, e.g.:
     echo   set LLAMA_DIR=C:\path\to\llama.cpp\build\bin
     echo   start-windows-gpu.cmd
@@ -317,11 +317,11 @@ if not exist "%LLAMA_SERVER%" (
 REM --- Validate model exists ---
 if not exist "%MODEL_PATH%" (
     echo ERROR: model GGUF not found.
-    echo.
+    echo(
     echo Searched for gemma-*.gguf in:
     echo   - %%REPO_DIR%%\models\
     echo   - %%USERPROFILE%%\models\
-    echo.
+    echo(
     echo Set MODEL_PATH to your GGUF file, e.g.:
     echo   set MODEL_PATH=C:\path\to\gemma-4-26B-A4B-it.Q4_0.gguf
     echo   start-windows-gpu.cmd
@@ -459,7 +459,7 @@ if "%MODE%"=="ask" (
         exit /b 1
     )
     echo Asking Gemma 4: %ASK_PROMPT%
-    echo.
+    echo(
     if exist "%REPO_DIR%\Scripts\chat.py" (
         python "%REPO_DIR%\Scripts\chat.py" --ask "%ASK_PROMPT%" --base-url "%API_BASE%"
     ) else (
@@ -471,7 +471,7 @@ if "%MODE%"=="ask" (
 
 if "%MODE%"=="chat" (
     echo Starting interactive chat with Gemma 4 ...
-    echo.
+    echo(
     if exist "%REPO_DIR%\Scripts\chat.py" (
         python "%REPO_DIR%\Scripts\chat.py" --chat --base-url "%API_BASE%" %POSITIONAL_ARGS%
     ) else (
@@ -527,7 +527,7 @@ where pi >nul 2>&1
 if not errorlevel 1 (
     pi --model turbofieldfare/gemma-4-26b-a4b-it
     if "%WARM%"=="1" (
-        echo.
+        echo(
         echo Pi agent exited. Server is still running (warm mode).
         echo Press any key to stop the server and exit...
         pause >nul
@@ -545,11 +545,11 @@ if errorlevel 1 (
     echo npm not found. Installing Node.js via winget...
     call winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements --silent --force
     if errorlevel 1 (
-        echo.
+        echo(
         echo ERROR: winget install failed. Install Node.js manually:
         echo   https://nodejs.org/
         echo   Then re-run this script.
-        echo.
+        echo(
         echo Server is still running at http://%SERVER_HOST%:%SERVER_PORT%
         goto :eof
     )
@@ -563,20 +563,20 @@ if exist "%ProgramFiles%\nodejs\node.exe" (
 if defined NODE_DIR (
     set "PATH=%PATH%;!NODE_DIR!"
 ) else (
-    echo.
+    echo(
     echo ERROR: Node.js installed but node.exe not found.
     echo   Close and reopen PowerShell, then re-run this script.
-    echo.
+    echo(
     echo Server is still running at http://%SERVER_HOST%:%SERVER_PORT%
     goto :eof
 )
 echo Installing Pi agent via npm...
 call npm install -g --ignore-scripts @earendil-works/pi-coding-agent >nul 2>&1
 if errorlevel 1 (
-    echo.
+    echo(
     echo ERROR: npm install failed. Try installing manually:
     echo   npm install -g --ignore-scripts @earendil-works/pi-coding-agent
-    echo.
+    echo(
     echo Server is still running at http://%SERVER_HOST%:%SERVER_PORT%
     goto :eof
 )
@@ -593,19 +593,19 @@ where pi >nul 2>&1
 if not errorlevel 1 (
     pi --model turbofieldfare/gemma-4-26b-a4b-it
     if errorlevel 1 (
-        echo.
+        echo(
         echo PowerShell execution policy may be blocking pi.
         echo Attempting to fix and retry...
-        echo.
+        echo(
         powershell -Command "Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force"
         pi --model turbofieldfare/gemma-4-26b-a4b-it
     )
 ) else (
-    echo.
+    echo(
     echo ERROR: Pi agent installed but not found in PATH.
     echo   Try closing and reopening PowerShell, then run:
     echo   pi --model turbofieldfare/gemma-4-26b-a4b-it
-    echo.
+    echo(
     echo Server is still running at http://%SERVER_HOST%:%SERVER_PORT%
 )
 goto :eof
