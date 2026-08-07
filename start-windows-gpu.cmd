@@ -151,8 +151,11 @@ if %TOTAL_VRAM_MB% gtr 0 (
 )
 
 REM --- Find llama-server.exe ---
+REM Default: pre-built binary lives alongside this script (REPO_DIR).
 if not defined LLAMA_DIR (
-    if exist "%REPO_DIR%\llama.cpp\build\bin\llama-server.exe" (
+    if exist "%REPO_DIR%\llama-server.exe" (
+        set "LLAMA_DIR=%REPO_DIR%"
+    ) else if exist "%REPO_DIR%\llama.cpp\build\bin\llama-server.exe" (
         set "LLAMA_DIR=%REPO_DIR%\llama.cpp\build\bin"
     ) else if exist "%REPO_DIR%\llama-b10242\llama-server.exe" (
         set "LLAMA_DIR=%REPO_DIR%\llama-b10242"
@@ -178,8 +181,13 @@ if not defined LLAMA_DIR (
 )
 :found_llama_dir
 
-REM --- Find model GGUF ---
+REM --- Find model GGGUF ---
+REM Default: Q2_K quant on D: drive (abliterated). Override with MODEL_PATH env.
 if not defined MODEL_PATH (
+    if exist "D:\Models\gemma-4-26B-A4B-it-abliterated.Q2_K.gguf" (
+        set "MODEL_PATH=D:\Models\gemma-4-26B-A4B-it-abliterated.Q2_K.gguf"
+        goto :found_model
+    )
     for %%Q in (Q4_0 Q5_K_M Q8_0 Q3_K_S Q2_K) do (
         if exist "%REPO_DIR%\models\gemma*-%%Q.gguf" (
             for %%F in ("%REPO_DIR%\models\gemma*-%%Q.gguf") do (
