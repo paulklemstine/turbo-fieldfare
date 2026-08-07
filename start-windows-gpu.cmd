@@ -184,8 +184,8 @@ if not defined LLAMA_DIR (
 REM --- Find model GGGUF ---
 REM Default: Q2_K quant on D: drive (abliterated). Override with MODEL_PATH env.
 if not defined MODEL_PATH (
-    if exist "E:\Models\gemma-4-26B-A4B-it-abliterated.Q2_K.gguf" (
-        set "MODEL_PATH=E:\Models\gemma-4-26B-A4B-it-abliterated.Q2_K.gguf"
+    if exist "E:\Models\gemma-4-26B-A4B-it.Q4_K_S.gguf" (
+        set "MODEL_PATH=E:\Models\gemma-4-26B-A4B-it.Q4_K_S.gguf"
         goto :found_model
     )
     for %%Q in (Q4_0 Q5_K_M Q8_0 Q3_K_S Q2_K) do (
