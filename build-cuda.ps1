@@ -54,13 +54,20 @@ Write-Host "=== Building llama.cpp with CUDA ===" -ForegroundColor Cyan
 $env:PATH = "$cudaPath\bin;" + $env:PATH
 
 # CUDA 12.x does not support MSVC 19.x (VS 2026). Patch host_config.h to accept it.
+# The #error directive is a single long line; match from #error to end-of-line.
 $hostConfig = Join-Path $cudaPath "include\crt\host_config.h"
 if (Test-Path $hostConfig) {
-    $content = Get-Content $hostConfig -Raw
-    if ($content -match '#error.*unsupported Microsoft Visual Studio') {
+    $lines = Get-Content $hostConfig
+    $patched = $false
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match 'unsupported Microsoft Visual Studio') {
+            $lines[$i] = '/* ' + $lines[$i].TrimEnd() + ' */'
+            $patched = $true
+        }
+    }
+    if ($patched) {
         Write-Host "Patching host_config.h to accept MSVC 19.x (VS 2026)..." -ForegroundColor Yellow
-        $content = $content -replace '(#if\s+defined\(_MSC_VER\)[^`n]*?)(#error.*?unsupported Microsoft Visual Studio.*?`n)', '$1/* $2 */'
-        Set-Content $hostConfig $content -NoNewline
+        $lines | Set-Content $hostConfig
     }
 }
 
