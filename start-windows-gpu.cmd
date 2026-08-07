@@ -452,7 +452,7 @@ if "%WARMUP%"=="1" (
     echo Warmup done.
 )
 
-REM --- Launch appropriate client ---
+REM --- Launch appropriate client (PowerShell, no Python required) ---
 if "%MODE%"=="ask" (
     if "%ASK_PROMPT%"=="" (
         echo ERROR: --ask requires a prompt.
@@ -460,10 +460,10 @@ if "%MODE%"=="ask" (
     )
     echo Asking Gemma 4: %ASK_PROMPT%
     echo(
-    if exist "%REPO_DIR%\Scripts\chat.py" (
-        python "%REPO_DIR%\Scripts\chat.py" --ask "%ASK_PROMPT%" --base-url "%API_BASE%"
+    if exist "%REPO_DIR%\Scripts\chat.ps1" (
+        powershell -NoProfile -ExecutionPolicy Bypass -File "%REPO_DIR%\Scripts\chat.ps1" --ask "%ASK_PROMPT%" --base-url "%API_BASE%"
     ) else (
-        echo chat.py not found. Server is running at %API_BASE%
+        echo chat client not found. Server is running at %API_BASE%
         echo Use curl or any OpenAI-compatible client to send requests.
     )
     goto :eof
@@ -472,10 +472,10 @@ if "%MODE%"=="ask" (
 if "%MODE%"=="chat" (
     echo Starting interactive chat with Gemma 4 ...
     echo(
-    if exist "%REPO_DIR%\Scripts\chat.py" (
-        python "%REPO_DIR%\Scripts\chat.py" --chat --base-url "%API_BASE%" %POSITIONAL_ARGS%
+    if exist "%REPO_DIR%\Scripts\chat.ps1" (
+        powershell -NoProfile -ExecutionPolicy Bypass -File "%REPO_DIR%\Scripts\chat.ps1" --chat --base-url "%API_BASE%"
     ) else (
-        echo chat.py not found. Server is running at %API_BASE%
+        echo chat client not found. Server is running at %API_BASE%
         echo Use curl or any OpenAI-compatible client to send requests.
     )
     goto :eof
