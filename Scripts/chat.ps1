@@ -9,7 +9,7 @@
 
 param(
     [switch]$chat,
-    [string]$ask,
+    [string]$ask = "",
     [string]$baseUrl = "http://127.0.0.1:8080/v1",
     [string]$model = "gemma-4-26b-a4b-it",
     [double]$temperature = 0.2,
@@ -18,8 +18,6 @@ param(
     [switch]$noStream
 )
 
-$DEFAULT_BASE_URL = "http://127.0.0.1:8080/v1"
-
 function Send-Messages {
     param([array]$messages)
     $body = @{
@@ -27,39 +25,16 @@ function Send-Messages {
         messages = $messages
         temperature = $temperature
         max_completion_tokens = $maxTokens
-        stream = -not $noStream
+        stream = $false
         stop = @("<end_of_turn>")
     } | ConvertTo-Json -Depth 10 -Compress
     $url = ($baseUrl.TrimEnd("/")) + "/chat/completions"
     $bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($body)
     try {
-        if ($noStream) {
-            $resp = Invoke-RestMethod -Uri $url -Method Post -ContentType "application/json" -Body $bodyBytes
-            $reply = $resp.choices[0].message.content
-            Write-Output $reply
-            return $reply
-        } else {
-            # Stream the SSE response line-by-line from the raw content stream
-            $resp = Invoke-WebRequest -Uri $url -Method Post -ContentType "application/json" -Body $bodyBytes -UseBasicParsing
-            $text = ""
-            $reasoning = ""
-            $reader = [System.IO.StreamReader]::new($resp.RawContentStream)
-            while ($null -ne ($line = $reader.ReadLine())) {
-                $line = $line.Trim()
-                if (-not $line.StartsWith("data:")) { continue }
-                $payload = $line.Substring(5).Trim()
-                if ($payload == "[DONE]") { break }
-                try { $chunk = $payload | ConvertFrom-Json } catch { continue }
-                $delta = $chunk.choices[0].delta
-                if ($null -eq $delta) { continue }
-                if ($delta.content) { $text += $delta.content; Write-Host -NoNewline $delta.content }
-                if ($delta.reasoning_content) { $reasoning += $delta.reasoning_content }
-            }
-            $reader.Close()
-            Write-Host ""
-            if (-not $text -and $reasoning) { Write-Host $reasoning; return $reasoning }
-            return $text
-        }
+        $resp = Invoke-RestMethod -Uri $url -Method Post -ContentType "application/json" -Body $bodyBytes
+        $reply = $resp.choices[0].message.content
+        Write-Output $reply
+        return $reply
     } catch {
         Write-Error "ERROR: cannot reach model server at $baseUrl ($($_.Exception.Message))"
         return $null
@@ -67,7 +42,7 @@ function Send-Messages {
 }
 
 # --- main ---
-if (-not $chat -and $null -eq $ask) {
+if (-not $chat -and $ask -eq "") {
     Write-Output "Usage: chat.ps1 --chat | --ask 'PROMPT'"
     exit 1
 }
@@ -75,12 +50,8 @@ if (-not $chat -and $null -eq $ask) {
 $messages = @()
 if ($system) { $messages += @{role = "system"; content = $system} }
 
-if ($null -ne $ask) {
-    $prompt = $ask
-    if (-not $prompt -and !$input.MoveNext()) {
-        $prompt = ($input -join "").Trim()
-    }
-    $messages += @{role = "user"; content = $prompt}
+if ($ask -ne "") {
+    $messages += @{role = "user"; content = $ask}
     $r = Send-Messages $messages
     if ($null -eq $r) { exit 1 }
     exit 0
