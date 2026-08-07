@@ -2,8 +2,12 @@
 * text=auto
 
 # Windows batch and PowerShell scripts: force CRLF line endings.
+# Batch files REQUIRE CRLF — LF-only causes "unexpected at this time" parse errors.
 *.cmd text eol=crlf
 *.ps1 text eol=crlf
+
+# Shell scripts: force LF line endings (executability depends on it).
+*.sh text eol=lf
 
 # Unix shell scripts: force LF line endings (executability depends on it).
 *.sh text eol=lf
