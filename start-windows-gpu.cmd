@@ -225,6 +225,7 @@ set "ASK_PROMPT="
 set "DEBUG=0"
 set "SPECULATIVE=1"
 set "WARM=1"
+set "QUIET=0"
 
 REM --- Parse arguments ---
 :parse_args
@@ -236,6 +237,7 @@ if /i "%~1"=="--chat" (
 )
 if /i "%~1"=="--ask" (
     set "MODE=ask"
+    set "QUIET=1"
     shift
     if not "%~1"=="" (
         set "ASK_PROMPT=%~1"
