@@ -326,6 +326,7 @@ if not exist "%MODEL_PATH%" (
     exit /b 1
 )
 
+if "%QUIET%"=="0" (
 echo ============================================================
 echo  llama.cpp + Gemma 4  (Windows Native + CUDA GPU)
 echo ============================================================
@@ -334,6 +335,7 @@ echo   model:      %MODEL_PATH%
 echo   gpu layers: %GPU_LAYERS%  ^|  context: %CONTEXT_TOKENS% tok  ^|  KV: %KV_TYPE%
 echo   threads:    %THREADS%  ^|  port: %SERVER_PORT%
 echo ============================================================
+)
 
 REM --- Build llama-server command line ---
 set "LLAMA_OPTS=-m %MODEL_PATH% -ngl %GPU_LAYERS% -c %CONTEXT_TOKENS% -t %THREADS% --host %SERVER_HOST% --port %SERVER_PORT%"
@@ -365,6 +367,7 @@ if "%SPECULATIVE%"=="1" (
 )
 
 REM --- Show active optimizations ---
+if "%QUIET%"=="0" (
 echo Active optimizations:
 if "%SPECULATIVE%"=="1" (
     echo   [ON]  N-gram speculative decoding ^(ngram-mod^)
@@ -402,8 +405,10 @@ if "%RAM_CACHE%"=="1" (
 )
 
 REM --- Start llama-server ---
+if "%QUIET%"=="0" (
 echo Launching llama-server ...
 echo Configuration: %LLAMA_OPTS%
+)
 if "%DEBUG%"=="1" (
     echo Debug mode: server output is shown in the console.
     start "llama-server" /B "%LLAMA_SERVER%" %LLAMA_OPTS%
@@ -454,7 +459,7 @@ if "%MODE%"=="ask" (
         echo ERROR: --ask requires a prompt.
         exit /b 1
     )
-    echo Asking Gemma 4: %ASK_PROMPT%
+    if "%QUIET%"=="0" echo Asking Gemma 4: %ASK_PROMPT%
     if exist "%REPO_DIR%\Scripts\chat.ps1" (
         powershell -NoProfile -ExecutionPolicy Bypass -File "%REPO_DIR%\Scripts\chat.ps1" --ask '%ASK_PROMPT%' --base-url "%API_BASE%"
     ) else (
@@ -465,7 +470,7 @@ if "%MODE%"=="ask" (
 )
 
 if "%MODE%"=="chat" (
-    echo Starting interactive chat with Gemma 4 ...
+    if "%QUIET%"=="0" echo Starting interactive chat with Gemma 4 ...
     if exist "%REPO_DIR%\Scripts\chat.ps1" (
         powershell -NoProfile -ExecutionPolicy Bypass -File "%REPO_DIR%\Scripts\chat.ps1" --chat --base-url "%API_BASE%"
     ) else (
