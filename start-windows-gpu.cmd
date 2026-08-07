@@ -461,7 +461,7 @@ if "%MODE%"=="ask" (
     echo Asking Gemma 4: %ASK_PROMPT%
     echo(
     if exist "%REPO_DIR%\Scripts\chat.ps1" (
-        powershell -NoProfile -ExecutionPolicy Bypass -File "%REPO_DIR%\Scripts\chat.ps1" --ask "%ASK_PROMPT%" --base-url "%API_BASE%"
+        powershell -NoProfile -ExecutionPolicy Bypass -File "%REPO_DIR%\Scripts\chat.ps1" --ask '%ASK_PROMPT%' --base-url "%API_BASE%"
     ) else (
         echo chat client not found. Server is running at %API_BASE%
         echo Use curl or any OpenAI-compatible client to send requests.
