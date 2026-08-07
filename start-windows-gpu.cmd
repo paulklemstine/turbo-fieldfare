@@ -517,7 +517,7 @@ where pi >nul 2>&1
 if not errorlevel 1 (
     pi --model turbofieldfare/gemma-4-26b-a4b-it
     if "%WARM%"=="1" (
-        echo Pi agent exited. Server is still running (warm mode).
+        echo Pi agent exited. Server is still running (warm mode^).
         echo Press any key to stop the server and exit...
         pause >nul
         echo Stopping server...
