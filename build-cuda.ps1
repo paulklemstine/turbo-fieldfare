@@ -50,6 +50,9 @@ if (-not (Test-Path $sourceDir)) {
 # --- Configure + Build -------------------------------------------------------
 Write-Host "=== Building llama.cpp with CUDA ===" -ForegroundColor Cyan
 
+# Add CUDA bin (nvcc.exe) to PATH so cmake can find the CUDA compiler toolset
+$env:PATH = "$cudaPath\bin;" + $env:PATH
+
 $cfgArgs = "call `"$vcvars`" x64 && cmake -B `"$buildDir`" -S `"$sourceDir`" -DGGML_CUDA=ON -DCMAKE_BUILD_TYPE=Release"
 Write-Host "Configuring..." -ForegroundColor Yellow
 $p = Start-Process cmd.exe -ArgumentList '/c',$cfgArgs -Wait -NoNewWindow -PassThru -WorkingDirectory $sourceDir
