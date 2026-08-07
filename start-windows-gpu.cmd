@@ -370,19 +370,19 @@ REM --- Show active optimizations ---
 echo.
 echo Active optimizations:
 if "%SPECULATIVE%"=="1" (
-    echo   [ON]  N-gram speculative decoding (ngram-mod)
+    echo   [ON]  N-gram speculative decoding ^(ngram-mod^)
 ) else (
     echo   [OFF] N-gram speculative decoding
 )
 if "%WARM%"=="1" (
-    echo   [ON]  Warm mode (server stays alive after client exits)
+    echo   [ON]  Warm mode ^(server stays alive after client exits^)
 ) else (
     echo   [OFF] Warm mode
 )
 if %GPU_LAYERS% gtr 0 (
     echo   [ON]  CUDA GPU offload: %GPU_LAYERS% layers, Flash Attention, %KV_TYPE% KV, ub 128
 ) else (
-    echo   [ON]  CPU-only: thread pinning (cpu-strict 1, cpu-range 0-2), %KV_TYPE% KV, ub 128
+    echo   [ON]  CPU-only: thread pinning ^(cpu-strict 1, cpu-range 0-2^), %KV_TYPE% KV, ub 128
 )
 echo.
 
