@@ -31,40 +31,35 @@ function Send-Messages {
         stop = @("<end_of_turn>")
     } | ConvertTo-Json -Depth 10 -Compress
     $url = ($baseUrl.TrimEnd("/")) + "/chat/completions"
+    $bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($body)
     try {
         if ($noStream) {
-            $resp = Invoke-RestMethod -Uri $url -Method Post -ContentType "application/json" -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
+            $resp = Invoke-RestMethod -Uri $url -Method Post -ContentType "application/json" -Body $bodyBytes
             $reply = $resp.choices[0].message.content
             Write-Output $reply
             return $reply
         } else {
-            $resp = Invoke-WebRequest -Uri $url -Method Post -ContentType "application/json" -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -UseBasicParsing
+            $resp = Invoke-WebRequest -Uri $url -Method Post -ContentType "application/json" -Body $bodyBytes -UseBasicParsing
             $text = ""
             $reasoning = ""
-            foreach ($line in $resp.Content -split "`n") {
+            foreach ($line in $resp.RawContentStream -ReadCount 0) {
+                if ($null -eq $line) { continue }
                 $line = $line.Trim()
                 if (-not $line.StartsWith("data:")) { continue }
                 $payload = $line.Substring(5).Trim()
                 if ($payload == "[DONE]") { break }
-                try {
-                    $chunk = $payload | ConvertFrom-Json
-                } catch { continue }
+                try { $chunk = $payload | ConvertFrom-Json } catch { continue }
                 $delta = $chunk.choices[0].delta
                 if ($null -eq $delta) { continue }
-                if ($delta.content) {
-                    $text += $delta.content
-                    Write-Host -NoNewline $delta.content
-                }
-                if ($delta.reasoning_content) {
-                    $reasoning += $delta.reasoning_content
-                }
+                if ($delta.content) { $text += $delta.content; Write-Host -NoNewline $delta.content }
+                if ($delta.reasoning_content) { $reasoning += $delta.reasoning_content }
             }
             Write-Host ""
             if (-not $text -and $reasoning) { Write-Host $reasoning; return $reasoning }
             return $text
         }
     } catch {
-        Write-Error "ERROR: cannot reach the model server at $baseUrl ($($_.Exception.Message))"
+        Write-Error "ERROR: cannot reach model server at $baseUrl ($($_.Exception.Message))"
         return $null
     }
 }
