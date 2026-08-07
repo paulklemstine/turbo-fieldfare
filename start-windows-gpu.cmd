@@ -367,7 +367,7 @@ if "%SPECULATIVE%"=="1" (
 )
 
 REM --- Show active optimizations ---
-echo.
+echo(
 echo Active optimizations:
 if "%SPECULATIVE%"=="1" (
     echo   [ON]  N-gram speculative decoding ^(ngram-mod^)
@@ -384,7 +384,7 @@ if %GPU_LAYERS% gtr 0 (
 ) else (
     echo   [ON]  CPU-only: thread pinning ^(cpu-strict 1, cpu-range 0-2^), %KV_TYPE% KV, ub 128
 )
-echo.
+echo(
 
 REM --- RAM cache: warm the OS file cache so expert loads hit RAM, not disk -
 REM The custom build MADV_DONTNEEDs expert pages after load. On Windows the OS
@@ -482,7 +482,7 @@ if "%MODE%"=="chat" (
 )
 
 REM --- Default mode: start server, then launch Pi agent ---
-echo.
+echo(
 echo Server is ready at http://%SERVER_HOST%:%SERVER_PORT%
 
 REM --- Ensure pi models.json points at this server ---
@@ -520,7 +520,7 @@ if not exist "%PI_MODELS_FILE%" (
 
 REM --- Launch Pi agent ---
 echo Launching Pi agent...
-echo.
+echo(
 set PI_SKIP_VERSION_CHECK=1
 set PI_TELEMETRY=0
 where pi >nul 2>&1
@@ -612,15 +612,15 @@ goto :eof
 
 :show_help
 echo Usage: %~nx0 [options]
-echo.
+echo(
 echo GPU-accelerated llama.cpp Gemma 4 server/client on Windows.
 echo Auto-detects NVIDIA VRAM and maximizes context window first, then speed.
-echo.
+echo(
 echo Modes:
 echo   (none)           Start server, then launch Pi coding agent (tool use)
 echo   --ask "PROMPT"   Single-shot: ask a question, print the reply, exit
 echo   --chat           Interactive chat REPL with conversation memory
-echo.
+echo(
 echo Options:
 echo   --context N      Context window size (default: auto = native 262K)
 echo   --cpu            Force CPU-only mode
@@ -632,17 +632,17 @@ echo   --threads N      CPU threads to use (default: NUMBER_OF_PROCESSORS - 1)
 echo   --warm           Keep server running after client exits (default: on)
 echo   --no-warm        Don't keep server running after client exits
 echo   -h, --help       Show this help
-echo.
+echo(
 echo Max-context-first logic:
 echo   Default reaches the model's native 262K context with the highest GPU
 echo   layer count that fits (measured: ngl=5 on RTX 4050 / Q2_K). This gives
 echo   you the largest context AND CUDA speedup. Override to shift the balance:
-echo.
+echo(
 echo   set GPU_LAYERS=10 ^& %~nx0     max speed (154K ctx)
 echo   set GPU_LAYERS=5  ^& %~nx0     native 262K ctx + GPU  [default]
 echo   set GPU_LAYERS=3  ^& %~nx0     min GPU, max RAM headroom
 echo   set KV_TYPE=q8_0 ^& %~nx0      better quality, ~half context
-echo.
+echo(
 echo Environment overrides:
 echo   MODEL_PATH       GGUF model file
 echo   LLAMA_DIR        llama.cpp directory with llama-server.exe
@@ -651,7 +651,7 @@ echo   CONTEXT_TOKENS   context window size   (default: auto)
 echo   KV_TYPE          q4_0 (max ctx) or q8_0 (quality) (default q4_0)
 echo   SERVER_PORT      server listen port    (default 8080)
 echo   THREADS          CPU threads (default: NUMBER_OF_PROCESSORS - 1)
-echo.
+echo(
 echo Examples:
 echo   %~nx0 --ask "Summarize the key points of this 200K-token document"
 echo   %~nx0 --chat
