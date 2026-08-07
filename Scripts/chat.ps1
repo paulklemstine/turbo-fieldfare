@@ -39,11 +39,12 @@ function Send-Messages {
             Write-Output $reply
             return $reply
         } else {
+            # Stream the SSE response line-by-line from the raw content stream
             $resp = Invoke-WebRequest -Uri $url -Method Post -ContentType "application/json" -Body $bodyBytes -UseBasicParsing
             $text = ""
             $reasoning = ""
-            foreach ($line in $resp.RawContentStream -ReadCount 0) {
-                if ($null -eq $line) { continue }
+            $reader = [System.IO.StreamReader]::new($resp.RawContentStream)
+            while ($null -ne ($line = $reader.ReadLine())) {
                 $line = $line.Trim()
                 if (-not $line.StartsWith("data:")) { continue }
                 $payload = $line.Substring(5).Trim()
@@ -54,6 +55,7 @@ function Send-Messages {
                 if ($delta.content) { $text += $delta.content; Write-Host -NoNewline $delta.content }
                 if ($delta.reasoning_content) { $reasoning += $delta.reasoning_content }
             }
+            $reader.Close()
             Write-Host ""
             if (-not $text -and $reasoning) { Write-Host $reasoning; return $reasoning }
             return $text
