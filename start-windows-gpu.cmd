@@ -363,7 +363,7 @@ if %TOTAL_VRAM_MB% gtr 0 (
 echo ============================================================
 
 REM --- Build llama-server command line ---
-set "LLAMA_OPTS=-m "%MODEL_PATH%" -ngl %GPU_LAYERS% -c %CONTEXT_TOKENS% -t %THREADS% --host %SERVER_HOST% --port %SERVER_PORT%"
+set "LLAMA_OPTS=-m %MODEL_PATH% -ngl %GPU_LAYERS% -c %CONTEXT_TOKENS% -t %THREADS% --host %SERVER_HOST% --port %SERVER_PORT%"
 
 REM --- KV cache type (q4_0 for max context, q8_0 for max quality) ---
 if "%KV_TYPE%"=="q8_0" (
