@@ -326,16 +326,14 @@ if not exist "%MODEL_PATH%" (
     exit /b 1
 )
 
-if "%QUIET%"=="0" (
-echo ============================================================
-echo  llama.cpp + Gemma 4  (Windows Native + CUDA GPU)
-echo ============================================================
-echo   backend:    %LLAMA_SERVER%
-echo   model:      %MODEL_PATH%
-echo   gpu layers: %GPU_LAYERS%  ^|  context: %CONTEXT_TOKENS% tok  ^|  KV: %KV_TYPE%
-echo   threads:    %THREADS%  ^|  port: %SERVER_PORT%
-echo ============================================================
-)
+if "%QUIET%"=="0" echo ============================================================
+if "%QUIET%"=="0" echo  llama.cpp + Gemma 4  (Windows Native + CUDA GPU)
+if "%QUIET%"=="0" echo ============================================================
+if "%QUIET%"=="0" echo   backend:    %LLAMA_SERVER%
+if "%QUIET%"=="0" echo   model:      %MODEL_PATH%
+if "%QUIET%"=="0" echo   gpu layers: %GPU_LAYERS%  ^|  context: %CONTEXT_TOKENS% tok  ^|  KV: %KV_TYPE%
+if "%QUIET%"=="0" echo   threads:    %THREADS%  ^|  port: %SERVER_PORT%
+if "%QUIET%"=="0" echo ============================================================
 
 REM --- Build llama-server command line ---
 set "LLAMA_OPTS=-m %MODEL_PATH% -ngl %GPU_LAYERS% -c %CONTEXT_TOKENS% -t %THREADS% --host %SERVER_HOST% --port %SERVER_PORT%"
@@ -405,10 +403,8 @@ if "%RAM_CACHE%"=="1" (
 )
 
 REM --- Start llama-server ---
-if "%QUIET%"=="0" (
-echo Launching llama-server ...
-echo Configuration: %LLAMA_OPTS%
-)
+if "%QUIET%"=="0" echo Launching llama-server ...
+if "%QUIET%"=="0" echo Configuration: %LLAMA_OPTS%
 if "%DEBUG%"=="1" (
     echo Debug mode: server output is shown in the console.
     start "llama-server" /B "%LLAMA_SERVER%" %LLAMA_OPTS%
@@ -447,11 +443,9 @@ REM A throwaway inference after load heats the OS page cache with the active
 REM experts, so the user's first REAL query runs at 17-18 tok/s instead of the
 REM 0.58 tok/s cold-start. Disable with WARMUP=0.
 if not defined WARMUP set "WARMUP=1"
-if "%WARMUP%"=="1" (
-    if "%QUIET%"=="0" echo Warming up expert cache ^(throwaway inference^)...
+if "%QUIET%"=="0" echo Warming up expert cache ^(throwaway inference^).
     curl.exe -s -m 120 -X POST http://%SERVER_HOST%:%SERVER_PORT%/completion -H "Content-Type: application/json" -d "{\"prompt\":\"The\",\"n_predict\":1,\"temperature\":0}" >nul 2>&1
-    if "%QUIET%"=="0" echo Warmup done.
-)
+if "%QUIET%"=="0" echo Warmup done.
 
 REM --- Launch appropriate client (PowerShell, no Python required) ---
 if "%MODE%"=="ask" (
