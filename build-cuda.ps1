@@ -53,7 +53,9 @@ Write-Host "=== Building llama.cpp with CUDA ===" -ForegroundColor Cyan
 # Add CUDA bin (nvcc.exe) to PATH so cmake can find the CUDA compiler toolset
 $env:PATH = "$cudaPath\bin;" + $env:PATH
 
-$cfgArgs = "call `"$vcvars`" x64 && cmake -B `"$buildDir`" -S `"$sourceDir`" -DGGML_CUDA=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_COMPILER=`"$cudaPath\bin\nvcc.exe`" -DCUDAToolkit_ROOT=`"$cudaPath`""
+# CUDA 12.8 does not support MSVC 19.x (VS 2026); pass -allow-unsupported-compiler
+$nvccFlags = "-allow-unsupported-compiler"
+$cfgArgs = "call `"$vcvars`" x64 && cmake -B `"$buildDir`" -S `"$sourceDir`" -DGGML_CUDA=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_COMPILER=`"$cudaPath\bin\nvcc.exe`" -DCUDAToolkit_ROOT=`"$cudaPath`" -DCMAKE_CUDA_FLAGS=`"$nvccFlags`""
 Write-Host "Configuring..." -ForegroundColor Yellow
 $p = Start-Process cmd.exe -ArgumentList '/c',$cfgArgs -Wait -NoNewWindow -PassThru -WorkingDirectory $sourceDir
 if ($p.ExitCode -ne 0) { Write-Host "Configure FAILED" -ForegroundColor Red; exit 1 }
