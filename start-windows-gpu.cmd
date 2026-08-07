@@ -330,36 +330,11 @@ if not exist "%MODEL_PATH%" (
 
 echo ============================================================
 echo  llama.cpp + Gemma 4  (Windows Native + CUDA GPU)
-echo  Max-context-first auto-configuration
 echo ============================================================
 echo   backend:    %LLAMA_SERVER%
 echo   model:      %MODEL_PATH%
-echo.
-if %TOTAL_VRAM_MB% gtr 0 (
-    echo   GPU VRAM:   %TOTAL_VRAM_MB% MiB
-    echo   gpu layers: %GPU_LAYERS%  ^|  context: %CONTEXT_TOKENS% tok  ^|  KV: %KV_TYPE%
-    echo   threads:    %THREADS%  ^|  port: %SERVER_PORT%
-    echo.
-    echo   VRAM budget ^(measured, Q2_K Gemma 4 26B-A4B^):
-    set /a "L_MB=%GPU_LAYERS% * %PER_LAYER_MB%"
-    set /a "KV_MB=%TOTAL_VRAM_MB% - %OVERHEAD_MB% - L_MB%"
-    echo     %GPU_LAYERS% model layers    ~ %L_MB% MiB  ^(CUDA speed^)
-    echo     KV cache (%KV_TYPE%)   ~ %KV_MB% MiB  ^(context^)
-    echo     CUDA overhead         ~ %OVERHEAD_MB% MiB
-    echo.
-    if %GPU_LAYERS% gtr 0 (
-        echo   [MAX-CONTEXT MODE] Highest layer count that reaches native context.
-    ) else (
-        echo   [CPU-ONLY MODE]
-    )
-    echo   Adjust the balance: set GPU_LAYERS=N ^& start-windows-gpu.cmd
-    echo     more layers = faster, fewer layers = more context headroom
-) else (
-    echo   gpu layers: %GPU_LAYERS%  ^|  context: %CONTEXT_TOKENS% tok  ^|  threads: %THREADS%
-    echo.
-    echo   No NVIDIA GPU detected - running CPU-only.
-    echo   (Install NVIDIA drivers or set GPU_LAYERS to force GPU mode)
-)
+echo   gpu layers: %GPU_LAYERS%  ^|  context: %CONTEXT_TOKENS% tok  ^|  KV: %KV_TYPE%
+echo   threads:    %THREADS%  ^|  port: %SERVER_PORT%
 echo ============================================================
 
 REM --- Build llama-server command line ---
