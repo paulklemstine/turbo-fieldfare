@@ -448,9 +448,9 @@ REM experts, so the user's first REAL query runs at 17-18 tok/s instead of the
 REM 0.58 tok/s cold-start. Disable with WARMUP=0.
 if not defined WARMUP set "WARMUP=1"
 if "%WARMUP%"=="1" (
-    echo Warming up expert cache ^(throwaway inference^)...
+    if "%QUIET%"=="0" echo Warming up expert cache ^(throwaway inference^)...
     curl.exe -s -m 120 -X POST http://%SERVER_HOST%:%SERVER_PORT%/completion -H "Content-Type: application/json" -d "{\"prompt\":\"The\",\"n_predict\":1,\"temperature\":0}" >nul 2>&1
-    echo Warmup done.
+    if "%QUIET%"=="0" echo Warmup done.
 )
 
 REM --- Launch appropriate client (PowerShell, no Python required) ---
