@@ -96,7 +96,11 @@ if (-not $quiet) { Write-Host "Server ready on port $serverPort." }
 
 # --- Handle modes ---
 if ($ask -ne "") {
-    $qBody = @{model="gemma-4-26b-a4b-it";messages=@(@{role="user";content=$ask});max_completion_tokens=4096;temperature=0.2;stream=$false} | ConvertTo-Json -Depth 5 -Compress
+    $messages = @(
+        @{role="system";content="You are a helpful assistant. Answer questions directly and concisely."},
+        @{role="user";content=$ask}
+    )
+    $qBody = @{model="gemma-4-26b-a4b-it";messages=$messages;max_completion_tokens=4096;temperature=0.2;stream=$false;stop=@("<end_of_turn>")} | ConvertTo-Json -Depth 5 -Compress
     try {
         $result = Invoke-RestMethod -Uri "${apiBase}/chat/completions" -Method Post -ContentType "application/json" -Body $qBody
         Write-Output $result.choices[0].message.content
