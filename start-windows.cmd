@@ -47,7 +47,7 @@ REM   GPU_LAYERS       GPU layers to offload (default 0 = CPU only)
 REM   THREADS          CPU threads (default: auto-detect physical cores - 1)
 REM
 
-setlocal enabledelayedexpansion
+setlocal
 
 REM --- Determine script directory ---
 set "REPO_DIR=%~dp0"
@@ -58,7 +58,7 @@ if not defined THREADS (
     REM Get logical processor count from environment (usually set by Windows)
     if defined NUMBER_OF_PROCESSORS (
         set /a "THREADS=NUMBER_OF_PROCESSORS - 1"
-        if !THREADS! lss 1 set "THREADS=1"
+        if %THREADS% lss 1 set "THREADS=1"
     ) else (
         set "THREADS=3"
     )
@@ -265,29 +265,33 @@ REM --- CPU optimization flags ---
 REM cpu-strict 1 + cpu-range: pin threads to specific cores for +5-15% speed
 REM (reduces cache misses vs letting OS scheduler migrate threads)
 if "%GPU_LAYERS%"=="0" (
-    set "LLAMA_OPTS=!LLAMA_OPTS! -ctk q4_0 -ctv q4_0 -ub 128 -fa on --cpu-strict 1 --cpu-range 0-2"
+    set "LLAMA_OPTS=%LLAMA_OPTS% -ctk q4_0 -ctv q4_0 -ub 128 -fa on --cpu-strict 1 --cpu-range 0-2"
 )
 
 REM --- Optional: n-gram speculative decoding (CPU-friendly, no second model) ---
 REM Uses hash-based n-gram lookup to predict next tokens. On repetitive content
 REM (code, structured text), achieves +15-25% throughput. Enable with --speculative.
 if "%SPECULATIVE%"=="1" (
-    set "LLAMA_OPTS=!LLAMA_OPTS! --spec-type ngram-mod --spec-ngram-mod-n-match 24 --spec-ngram-mod-n-min 48 --spec-ngram-mod-n-max 64 --spec-draft-n-max 4"
+    set "LLAMA_OPTS=%LLAMA_OPTS% --spec-type ngram-mod --spec-ngram-mod-n-match 24 --spec-ngram-mod-n-min 48 --spec-ngram-mod-n-max 64 --spec-draft-n-max 4"
 )
 
 REM --- Show active optimizations ---
+REM Note: Avoid if/else with parentheses because the closing paren in strings
+REM like "(ngram-mod)" is parsed as the end of the if block.
 echo.
 echo Active optimizations:
-if "%SPECULATIVE%"=="1" (
-    echo   [ON] N-gram speculative decoding (ngram-mod)
-) else (
-    echo   [OFF] N-gram speculative decoding
-)
-if "%WARM%"=="1" (
-    echo   [ON] Warm mode (server stays alive after client exits)
-) else (
-    echo   [OFF] Warm mode
-)
+if "%SPECULATIVE%"=="1" goto :spec_on
+echo   [OFF] N-gram speculative decoding
+goto :spec_done
+:spec_on
+echo   [ON] N-gram speculative decoding ^(ngram-mod^)
+:spec_done
+if "%WARM%"=="1" goto :warm_on
+echo   [OFF] Warm mode
+goto :warm_done
+:warm_on
+echo   [ON] Warm mode ^(server stays alive after client exits^)
+:warm_done
 echo   [ON] Thread pinning (cpu-strict 1, cpu-range 0-2)
 echo   [ON] Flash Attention, q4_0 KV cache, ub 128
 echo.
@@ -309,6 +313,15 @@ if "%RAM_CACHE%"=="1" (
             echo   (preheat skipped -- could not read model file)
         )
     )
+)
+
+REM --- Kill any stale llama-server process ---
+REM Prevents "file in use" errors from a previous instance that didn't exit cleanly.
+tasklist /FI "IMAGENAME eq llama-server.exe" 2>nul | findstr /i "llama-server" >nul
+if not errorlevel 1 (
+    echo Killing stale llama-server process...
+    taskkill /F /IM llama-server.exe >nul 2>&1
+    timeout /t 2 /nobreak >nul
 )
 
 REM --- Start llama-server ---
@@ -482,7 +495,7 @@ if exist "%ProgramFiles%\nodejs\node.exe" (
 )
 
 if defined NODE_DIR (
-    set "PATH=%PATH%;!NODE_DIR!"
+    set "PATH=%PATH%;%NODE_DIR%"
 ) else (
     echo.
     echo ERROR: Node.js installed but node.exe not found.
