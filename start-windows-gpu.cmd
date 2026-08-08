@@ -354,9 +354,9 @@ if "%QUIET%"=="0" echo Loading model weights ^(first launch takes ~90s for repac
 set "HEALTH_FILE=%TEMP%\llama_health.txt"
 set /a ATTEMPTS=0
 :wait_loop
-curl.exe -s -m 3 http://%SERVER_HOST%:%SERVER_PORT%/health -o "%HEALTH_FILE%" 2>nul
-findstr /i "ok" "%HEALTH_FILE%" >nul 2>&1
-if not errorlevel 1 goto :server_ready
+curl.exe -s -m 3 -o nul -w "%{http_code}" http://%SERVER_HOST%:%SERVER_PORT%/health > "%HEALTH_FILE%" 2>nul
+set /p HTTP_CODE=<"%HEALTH_FILE%"
+if "%HTTP_CODE%"=="200" goto :server_ready
 
 timeout /t 2 /nobreak >nul
 set /a ATTEMPTS+=1
