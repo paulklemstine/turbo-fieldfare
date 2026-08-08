@@ -149,11 +149,7 @@ if /i "%~1"=="--chat" (
 if /i "%~1"=="--ask" (
     set "MODE=ask"
     shift
-    if not "%~1"=="" (
-        set "ASK_PROMPT=%~1"
-        shift
-    )
-    goto :parse_args
+    goto :handle_ask
 )
 if /i "%~1"=="--cpu" (
     set "GPU_LAYERS=0"
@@ -381,7 +377,7 @@ REM --ask and --chat bypass the Pi agent entirely, connecting directly to
 REM llama-server. This avoids the large Pi system prompt overhead (~2-3KB)
 REM and gives faster responses for simple queries.
 if "%MODE%"=="ask" (
-    if "%ASK_PROMPT%"=="" (
+    if not defined ASK_PROMPT (
         echo ERROR: --ask requires a prompt.
         exit /b 1
     )
@@ -552,6 +548,14 @@ if not errorlevel 1 (
     echo Server is still running at http://%SERVER_HOST%:%SERVER_PORT%
 )
 goto :eof
+
+REM --- Subroutine: handle --ask argument ---
+REM Called from parse loop when --ask is detected. Sets ASK_PROMPT from next arg.
+:handle_ask
+if "%~1"=="" goto :parse_args
+set "ASK_PROMPT=%~1"
+shift
+goto :parse_args
 
 :show_help
 echo Usage: %~nx0 [options]
