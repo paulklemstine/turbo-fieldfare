@@ -346,12 +346,9 @@ taskkill /F /IM llama-server.exe >nul 2>&1
 timeout /t 1 /nobreak >nul
 if "%QUIET%"=="0" echo Launching llama-server ...
 if "%QUIET%"=="0" echo Configuration: %LLAMA_OPTS%
-if "%DEBUG%"=="1" (
-    echo Debug mode: server output is shown in the console.
-    start "llama-server" /B "%LLAMA_SERVER%" %LLAMA_OPTS%
-) else (
-    start "llama-server" /B "%LLAMA_SERVER%" %LLAMA_OPTS% > "%REPO_DIR%\llama_server.log" 2>&1
-)
+REM Start server in background. Redirect via a helper batch to avoid the
+REM "start /B ... > log" pitfall that detaches the redirection.
+start "llama-server" /B "%LLAMA_SERVER%" %LLAMA_OPTS% ^> "%REPO_DIR%\llama_server.log" ^>^&1 ^&
 
 REM --- Wait for server to be ready ---
 if "%QUIET%"=="0" echo Loading model weights ^(first launch takes ~90s for repack^)...
@@ -370,7 +367,9 @@ if "%QUIET%"=="0" if %ATTEMPTS%==30 echo   Still loading... (60s)
 if "%QUIET%"=="0" if %ATTEMPTS%==40 echo   Still loading... (80s)
 if "%QUIET%"=="0" if %ATTEMPTS%==50 echo   Still loading... (100s)
 if "%QUIET%"=="0" if %ATTEMPTS%==60 echo   Still loading... (120s)
-if %ATTEMPTS% lss 90 goto :wait_loop
+if "%QUIET%"=="0" if %ATTEMPTS%==90 echo   Still loading... (180s)
+if "%QUIET%"=="0" if %ATTEMPTS%==120 echo   Still loading... (240s)
+if %ATTEMPTS% lss 180 goto :wait_loop
 
 echo ERROR: Timed out waiting for llama-server to be ready.
 echo Check the console window for error messages.
