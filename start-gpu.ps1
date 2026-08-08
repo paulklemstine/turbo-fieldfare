@@ -98,12 +98,10 @@ if (-not $quiet) { Write-Host "Server ready on port $serverPort." }
 
 # --- Handle modes ---
 if ($ask -ne "") {
-    # Use /v1/chat/completions with a system prompt. Without it the
-    # abliterated GGUF enters its "setup" meta-mode instead of answering.
-    $messages = @(
-        @{role="system";content="You are a helpful assistant. Answer questions directly and concisely."},
-        @{role="user";content=$ask}
-    )
+    # Embed Gemma 4's chat-template tokens directly so the model sees the
+    # correct turn structure and answers instead of entering meta-mode.
+    $userContent = "<start_of_turn>user`n${ask}<end_of_turn>`n<start_of_turn>model`n"
+    $messages = @(@{role="user";content=$userContent})
     $qBody = @{model="gemma-4-26b-a4b-it";messages=$messages;max_completion_tokens=4096;temperature=0.2;stream=$false;stop=@("<end_of_turn>")} | ConvertTo-Json -Depth 5 -Compress
     try {
         $result = Invoke-RestMethod -Uri "${apiBase}/chat/completions" -Method Post -ContentType "application/json" -Body $qBody -TimeoutSec 300
