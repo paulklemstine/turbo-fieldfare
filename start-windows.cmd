@@ -47,7 +47,7 @@ REM   GPU_LAYERS       GPU layers to offload (default 0 = CPU only)
 REM   THREADS          CPU threads (default: auto-detect physical cores - 1)
 REM
 
-setlocal
+setlocal disabledelayedexpansion
 
 REM --- Determine script directory ---
 set "REPO_DIR=%~dp0"
@@ -58,11 +58,13 @@ if not defined THREADS (
     REM Get logical processor count from environment (usually set by Windows)
     if defined NUMBER_OF_PROCESSORS (
         set /a "THREADS=NUMBER_OF_PROCESSORS - 1"
-        if %THREADS% lss 1 set "THREADS=1"
     ) else (
         set "THREADS=3"
     )
 )
+REM Ensure at least 1 thread (relevant for single-core machines).
+REM Done outside the block above so %THREADS% reflects the value just set.
+if %THREADS% equ 0 set "THREADS=1"
 
 REM --- Find llama-server.exe ---
 if not defined LLAMA_DIR (
@@ -139,61 +141,21 @@ set "CONTEXT_DEFAULT=1"
 set "WARM=1"
 
 REM --- Parse arguments ---
+REM NOTE: Do NOT use parentheses for if blocks that read %~1 after shift.
+REM Batch expands %1 at parse time, so inside parentheses shift has no
+REM effect on %1 until after the block ends. Use goto instead.
 :parse_args
 if "%~1"=="" goto :done_parse
-if /i "%~1"=="--chat" (
-    set "MODE=chat"
-    shift
-    goto :parse_args
-)
-if /i "%~1"=="--ask" (
-    set "MODE=ask"
-    shift
-    goto :handle_ask
-)
-if /i "%~1"=="--cpu" (
-    set "GPU_LAYERS=0"
-    shift
-    goto :parse_args
-)
-if /i "%~1"=="--threads" (
-    shift
-    set "THREADS=%~1"
-    shift
-    goto :parse_args
-)
-if /i "%~1"=="--debug" (
-    set "DEBUG=1"
-    shift
-    goto :parse_args
-)
-if /i "%~1"=="--context" (
-    shift
-    set "CONTEXT_TOKENS=%~1"
-    set "CONTEXT_DEFAULT=0"
-    shift
-    goto :parse_args
-)
-if /i "%~1"=="--speculative" (
-    set "SPECULATIVE=1"
-    shift
-    goto :parse_args
-)
-if /i "%~1"=="--no-speculative" (
-    set "SPECULATIVE=0"
-    shift
-    goto :parse_args
-)
-if /i "%~1"=="--warm" (
-    set "WARM=1"
-    shift
-    goto :parse_args
-)
-if /i "%~1"=="--no-warm" (
-    set "WARM=0"
-    shift
-    goto :parse_args
-)
+if /i "%~1"=="--chat" set "MODE=chat" & shift & goto :parse_args
+if /i "%~1"=="--ask" set "MODE=ask" & shift & goto :handle_ask
+if /i "%~1"=="--cpu" set "GPU_LAYERS=0" & shift & goto :parse_args
+if /i "%~1"=="--threads" shift & set "THREADS=%~1" & shift & goto :parse_args
+if /i "%~1"=="--debug" set "DEBUG=1" & shift & goto :parse_args
+if /i "%~1"=="--context" shift & set "CONTEXT_TOKENS=%~1" & set "CONTEXT_DEFAULT=0" & shift & goto :parse_args
+if /i "%~1"=="--speculative" set "SPECULATIVE=1" & shift & goto :parse_args
+if /i "%~1"=="--no-speculative" set "SPECULATIVE=0" & shift & goto :parse_args
+if /i "%~1"=="--warm" set "WARM=1" & shift & goto :parse_args
+if /i "%~1"=="--no-warm" set "WARM=0" & shift & goto :parse_args
 if /i "%~1"=="-h" goto :show_help
 if /i "%~1"=="--help" goto :show_help
 
@@ -293,13 +255,13 @@ echo   [ON] Flash Attention, q4_0 KV cache, ub 128
 echo.
 
 REM --- Expert cache: warm the OS file cache + warmup inference ---------------
-# Measured on RTX 4050 + 11GB RAM + Q2_K Gemma 4 26B-A4B: the custom build
-# MADV_DONTNEEDs expert pages after load, so the first inference is always cold
-# (0.58 tok/s, ~480K page faults). The 2nd same-topic inference hits ~5 tok/s,
-# and by the 3rd it is 17-18 tok/s with ZERO disk I/O. Two levers:
-#   RAM_CACHE=1 (default): pre-read the model to warm the OS file cache.
-#   WARMUP=1 (default): run a throwaway inference after load to heat the expert
-#     cache before the user's first real query (turns 0.58 tok/s into 17-18 tok/s).
+REM Measured on RTX 4050 + 11GB RAM + Q2_K Gemma 4 26B-A4B: the custom build
+REM MADV_DONTNEEDs expert pages after load, so the first inference is always cold
+REM (0.58 tok/s, ~480K page faults). The 2nd same-topic inference hits ~5 tok/s,
+REM and by the 3rd it is 17-18 tok/s with ZERO disk I/O. Two levers:
+REM   RAM_CACHE=1 (default): pre-read the model to warm the OS file cache.
+REM   WARMUP=1 (default): run a throwaway inference after load to heat the expert
+REM     cache before the user's first real query (turns 0.58 tok/s into 17-18 tok/s).
 if not defined RAM_CACHE set "RAM_CACHE=1"
 if "%RAM_CACHE%"=="1" (
     if exist "%MODEL_PATH%" (
