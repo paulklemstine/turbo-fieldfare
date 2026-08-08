@@ -226,17 +226,15 @@ set "DEBUG=0"
 set "SPECULATIVE=1"
 set "WARM=1"
 set "QUIET=0"
-set "ALL_ARGS=%*"
 
 REM --- Detect mode from arguments --------------------------------------------
-echo %ALL_ARGS% | findstr /i /c:"--ask" >nul && (
+if /i "%~1"=="--ask" (
     set "MODE=ask"
     set "QUIET=1"
-    set "ASK_PROMPT=%ALL_ARGS:*--ask =%"
-    set "ASK_PROMPT=%ASK_PROMPT:"=%"
+    set "ASK_PROMPT=%~2"
     goto :args_done
 )
-echo %ALL_ARGS% | findstr /i /c:"--chat" >nul && set "MODE=chat" && goto :args_done
+if /i "%~1"=="--chat" set "MODE=chat" && goto :args_done
 set "MODE=pi"
 
 :args_done
