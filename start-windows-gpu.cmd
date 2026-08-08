@@ -229,16 +229,20 @@ set "QUIET=1"
 
 REM --- Parse arguments --------------------------------------------------------
 REM Default is quiet mode. --chat and Pi agent mode are verbose.
-REM For --ask, the prompt is simply %~2 (the arg after --ask).
 if "%~1"=="" goto :parse_done
 if /i "%~1"=="--chat" set "MODE=chat" && set "QUIET=0"
-if /i "%~1"=="--ask" set "MODE=ask" && set "QUIET=1" & if not "%~2"=="" set "ASK_PROMPT=%~2"
 if /i "%~1"=="--cpu" set "GPU_LAYERS=0"
 if /i "%~1"=="--debug" set "DEBUG=1"
 if /i "%~1"=="--no-warm" set "WARM=0"
 if /i "%~1"=="--no-speculative" set "SPECULATIVE=0"
 if "%MODE%"=="pi" set "QUIET=0"
 :parse_done
+
+REM --- Capture --ask prompt (all args after --ask) ---
+if "%MODE%"=="ask" (
+    shift
+    set "ASK_PROMPT=%*"
+)
 
 REM --- Validate llama-server exists ---
 if not exist "%LLAMA_SERVER%" (
@@ -399,7 +403,7 @@ if "%MODE%"=="ask" (
     )
     if "%QUIET%"=="0" echo Asking Gemma 4: %ASK_PROMPT%
     if exist "%REPO_DIR%\Scripts\chat.ps1" (
-        powershell -NoProfile -ExecutionPolicy Bypass -File "%REPO_DIR%\Scripts\chat.ps1" --ask '%ASK_PROMPT%' --base-url "%API_BASE%"
+        powershell -NoProfile -ExecutionPolicy Bypass -File "%REPO_DIR%\Scripts\chat.ps1" --ask "%ASK_PROMPT%" --base-url "%API_BASE%"
     ) else (
         echo chat client not found. Server is running at %API_BASE%
         echo Use curl or any OpenAI-compatible client to send requests.
