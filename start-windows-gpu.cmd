@@ -225,25 +225,21 @@ set "ASK_PROMPT="
 set "DEBUG=0"
 set "SPECULATIVE=1"
 set "WARM=1"
-set "QUIET=1"
-
-REM --- Parse arguments --------------------------------------------------------
-REM Default is quiet mode. --chat and Pi agent mode are verbose.
-REM --ask prompt is extracted from %* via string substitution (handles
-REM PowerShell's embedded-quote argument passing correctly).
+set "QUIET=0"
 set "ALL_ARGS=%*"
-if /i "%~1"=="--chat" set "MODE=chat" && set "QUIET=0"
-if /i "%~1"=="--cpu" set "GPU_LAYERS=0"
-if /i "%~1"=="--debug" set "DEBUG=1"
-if /i "%~1"=="--no-warm" set "WARM=0"
-if /i "%~1"=="--no-speculative" set "SPECULATIVE=0"
-if /i "%~1"=="--ask" (
+
+REM --- Detect mode from arguments --------------------------------------------
+echo %ALL_ARGS% | findstr /i /c:"--ask" >nul && (
     set "MODE=ask"
     set "QUIET=1"
     set "ASK_PROMPT=%ALL_ARGS:*--ask =%"
     set "ASK_PROMPT=%ASK_PROMPT:"=%"
+    goto :args_done
 )
-if "%MODE%"=="pi" set "QUIET=0"
+echo %ALL_ARGS% | findstr /i /c:"--chat" >nul && set "MODE=chat" && goto :args_done
+set "MODE=pi"
+
+:args_done
 
 REM --- Validate llama-server exists ---
 if not exist "%LLAMA_SERVER%" (
@@ -370,14 +366,12 @@ if not errorlevel 1 goto :server_ready
 
 timeout /t 2 /nobreak >nul
 set /a ATTEMPTS+=1
-if "%QUIET%"=="0" (
-    if %ATTEMPTS%==10 echo   Still loading... (20s)
-    if %ATTEMPTS%==20 echo   Still loading... (40s)
-    if %ATTEMPTS%==30 echo   Still loading... (60s)
-    if %ATTEMPTS%==40 echo   Still loading... (80s)
-    if %ATTEMPTS%==50 echo   Still loading... (100s)
-    if %ATTEMPTS%==60 echo   Still loading... (120s)
-)
+if "%QUIET%"=="0" if %ATTEMPTS%==10 echo   Still loading... (20s)
+if "%QUIET%"=="0" if %ATTEMPTS%==20 echo   Still loading... (40s)
+if "%QUIET%"=="0" if %ATTEMPTS%==30 echo   Still loading... (60s)
+if "%QUIET%"=="0" if %ATTEMPTS%==40 echo   Still loading... (80s)
+if "%QUIET%"=="0" if %ATTEMPTS%==50 echo   Still loading... (100s)
+if "%QUIET%"=="0" if %ATTEMPTS%==60 echo   Still loading... (120s)
 if %ATTEMPTS% lss 90 goto :wait_loop
 
 echo ERROR: Timed out waiting for llama-server to be ready.
