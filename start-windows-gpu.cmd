@@ -346,9 +346,9 @@ taskkill /F /IM llama-server.exe >nul 2>&1
 timeout /t 1 /nobreak >nul
 if "%QUIET%"=="0" echo Launching llama-server ...
 if "%QUIET%"=="0" echo Configuration: %LLAMA_OPTS%
-REM Start server in background. Redirect via a helper batch to avoid the
-REM "start /B ... > log" pitfall that detaches the redirection.
-start "llama-server" /B "%LLAMA_SERVER%" %LLAMA_OPTS% ^> "%REPO_DIR%\llama_server.log" ^>^&1 ^&
+REM Start server silently in background. Use cmd /c so the redirection
+REM applies to the server process, not the start command.
+start "llama-server" /B cmd /c "%LLAMA_SERVER% %LLAMA_OPTS% > \"%REPO_DIR%\llama_server.log\" 2>&1"
 
 REM --- Wait for server to be ready ---
 if "%QUIET%"=="0" echo Loading model weights ^(first launch takes ~90s for repack^)...
