@@ -24,16 +24,19 @@ if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
     $vramMB = [int](nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | Select-Object -First 1)
 }
 
-# --- Compute GPU layers (measured: 338 MiB/layer, 500 MiB overhead) ---
+# --- Compute GPU layers + context for usable speed --------------------------
+# Measured: 338 MiB/layer, 500 MiB overhead, q4_0 KV = 15 KiB/token.
+# 262K ctx fits only 5 GPU layers (25 on CPU = ~0.1 tok/s, unusable).
+# 16K ctx fits 16 layers (14 on CPU = ~2-5 tok/s, practical default).
 $perLayerMB = 338
 $overheadMB = 500
-$nativeCtx = 262144
 $kvQ4Kib = 15
+$contextTokens = 16384   # practical default; override with CONTEXT_TOKENS env
 
 if ($cpu) {
     $gpuLayers = 0
 } elseif ($vramMB -gt 0) {
-    $needKvMB = [math]::Floor($nativeCtx * $kvQ4Kib / 1024)
+    $needKvMB = [math]::Floor($contextTokens * $kvQ4Kib / 1024)
     $layerBudgetMB = $vramMB - $overheadMB - $needKvMB
     $gpuLayers = [math]::Floor($layerBudgetMB / $perLayerMB)
     if ($gpuLayers -gt 30) { $gpuLayers = 30 }
@@ -42,7 +45,6 @@ if ($cpu) {
     $gpuLayers = 0
 }
 
-$contextTokens = $nativeCtx
 $threads = [math]::Max(1, (Get-CimInstance Win32_Processor).NumberOfLogicalProcessors - 1)
 
 # --- Quiet mode ---
@@ -66,7 +68,7 @@ if (-not $quiet) { Write-Host "Launching llama-server ..." }
 
 $serverArgs = @('-m', $modelPath, '-ngl', "$gpuLayers", '-c', "$contextTokens", '-t', "$threads",
                 '--host', $serverHost, '--port', "$serverPort", '--temp', '0',
-                '-ctk', 'q4_0', '-ctv', 'q4_0', '-ub', '128', '-fa', 'on')
+                '-ctk', 'q4_0', '-ctv', 'q4_0', '-ub', '128', '-fa', 'on', '--no-mmap')
 
 $serverProc = Start-Process -WindowStyle Hidden -FilePath $llamaServer -ArgumentList $serverArgs -PassThru -RedirectStandardOutput (Join-Path $scriptDir "llama_server.log") -RedirectStandardError (Join-Path $scriptDir "llama_server_err.log")
 
@@ -101,7 +103,7 @@ if ($ask -ne "") {
     )
     $qBody = @{model="gemma-4-26b-a4b-it";messages=$messages;max_completion_tokens=4096;temperature=0.2;stream=$false;stop=@("<end_of_turn>")} | ConvertTo-Json -Depth 5 -Compress
     try {
-        $result = Invoke-RestMethod -Uri "${apiBase}/chat/completions" -Method Post -ContentType "application/json" -Body $qBody -TimeoutSec 180
+        $result = Invoke-RestMethod -Uri "${apiBase}/chat/completions" -Method Post -ContentType "application/json" -Body $qBody -TimeoutSec 300
         Write-Output $result.choices[0].message.content
     } catch {
         Write-Error "Query failed: $_"
