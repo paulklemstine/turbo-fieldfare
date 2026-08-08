@@ -333,7 +333,7 @@ REM Enable with RAM_CACHE=1 (default). Disable with RAM_CACHE=0.
 if not defined RAM_CACHE set "RAM_CACHE=1"
 if "%RAM_CACHE%"=="1" (
     if exist "%MODEL_PATH%" (
-        echo Preheating model into OS file cache ...
+        if "%QUIET%"=="0" echo Preheating model into OS file cache ...
         REM PowerShell sequential read warms the system file cache (standby list).
         powershell -NoProfile -Command "$s=New-Object System.IO.FileStream('%MODEL_PATH%','Open','Read','ReadWrite',67108864);$b=New-Object byte[] 67108864;while($s.Read($b,0,$b.Length)){};$s.Close()" >nul 2>&1
         if errorlevel 1 (
@@ -355,7 +355,7 @@ if "%DEBUG%"=="1" (
 )
 
 REM --- Wait for server to be ready ---
-echo Loading model weights ^(first launch takes ~90s for repack^)...
+if "%QUIET%"=="0" echo Loading model weights ^(first launch takes ~90s for repack^)...
 set "HEALTH_FILE=%TEMP%\llama_health.txt"
 set /a ATTEMPTS=0
 :wait_loop
@@ -365,12 +365,14 @@ if not errorlevel 1 goto :server_ready
 
 timeout /t 2 /nobreak >nul
 set /a ATTEMPTS+=1
-if %ATTEMPTS%==10 echo   Still loading... (20s)
-if %ATTEMPTS%==20 echo   Still loading... (40s)
-if %ATTEMPTS%==30 echo   Still loading... (60s)
-if %ATTEMPTS%==40 echo   Still loading... (80s)
-if %ATTEMPTS%==50 echo   Still loading... (100s)
-if %ATTEMPTS%==60 echo   Still loading... (120s)
+if "%QUIET%"=="0" (
+    if %ATTEMPTS%==10 echo   Still loading... (20s)
+    if %ATTEMPTS%==20 echo   Still loading... (40s)
+    if %ATTEMPTS%==30 echo   Still loading... (60s)
+    if %ATTEMPTS%==40 echo   Still loading... (80s)
+    if %ATTEMPTS%==50 echo   Still loading... (100s)
+    if %ATTEMPTS%==60 echo   Still loading... (120s)
+)
 if %ATTEMPTS% lss 90 goto :wait_loop
 
 echo ERROR: Timed out waiting for llama-server to be ready.
@@ -378,7 +380,7 @@ echo Check the console window for error messages.
 exit /b 1
 
 :server_ready
-echo Server ready on port %SERVER_PORT%.
+if "%QUIET%"=="0" echo Server ready on port %SERVER_PORT%.
 
 REM --- Warmup inference: heat the expert cache --------------------------------
 REM A throwaway inference after load heats the OS page cache with the active
