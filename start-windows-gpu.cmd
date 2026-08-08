@@ -229,20 +229,21 @@ set "QUIET=1"
 
 REM --- Parse arguments --------------------------------------------------------
 REM Default is quiet mode. --chat and Pi agent mode are verbose.
-if "%~1"=="" goto :parse_done
+REM --ask prompt is extracted from %* via string substitution (handles
+REM PowerShell's embedded-quote argument passing correctly).
+set "ALL_ARGS=%*"
 if /i "%~1"=="--chat" set "MODE=chat" && set "QUIET=0"
 if /i "%~1"=="--cpu" set "GPU_LAYERS=0"
 if /i "%~1"=="--debug" set "DEBUG=1"
 if /i "%~1"=="--no-warm" set "WARM=0"
 if /i "%~1"=="--no-speculative" set "SPECULATIVE=0"
-if "%MODE%"=="pi" set "QUIET=0"
-:parse_done
-
-REM --- Capture --ask prompt (all args after --ask) ---
-if "%MODE%"=="ask" (
-    shift
-    set "ASK_PROMPT=%*"
+if /i "%~1"=="--ask" (
+    set "MODE=ask"
+    set "QUIET=1"
+    set "ASK_PROMPT=%ALL_ARGS:*--ask =%"
+    set "ASK_PROMPT=%ASK_PROMPT:"=%"
 )
+if "%MODE%"=="pi" set "QUIET=0"
 
 REM --- Validate llama-server exists ---
 if not exist "%LLAMA_SERVER%" (
