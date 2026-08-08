@@ -403,6 +403,8 @@ if "%RAM_CACHE%"=="1" (
 )
 
 REM --- Start llama-server ---
+taskkill /F /IM llama-server.exe >nul 2>&1
+timeout /t 1 /nobreak >nul
 if "%QUIET%"=="0" echo Launching llama-server ...
 if "%QUIET%"=="0" echo Configuration: %LLAMA_OPTS%
 if "%DEBUG%"=="1" (
