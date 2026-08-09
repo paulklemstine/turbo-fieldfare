@@ -45,7 +45,7 @@ V "loading model (first run ~90s)"
 $ready = $false
 for ($i = 0; $i -lt 180; $i++) {
     try {
-        $resp = Invoke-WebRequest -Uri "http://${serverHost}:${serverPort}/health" -TimeoutSec 2
+        $resp = Invoke-WebRequest -Uri "http://${serverHost}:${serverPort}/health" -TimeoutSec 2 -UseBasicParsing
         if ($resp.Content -match '"status":"ok"') { $ready = $true; break }
     } catch { }
     if ($i % 5 -eq 0) { V "waiting (${$i*2}s)" }
