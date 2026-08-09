@@ -54,7 +54,7 @@ try {
 
 # --- Wait for health ---
 $ready = $false
-for ($i = 0; $i < 120; $i++) {
+for ($i = 0; $i -lt 120; $i++) {
     try {
         $resp = Invoke-WebRequest -Uri "http://${serverHost}:${serverPort}/health" -TimeoutSec 2 -UseBasicParsing
         if ($resp.Content -match '"status":"ok"') { $ready = $true; V "ready at $($i*2)s"; break }
