@@ -1,15 +1,11 @@
 #!/usr/bin/env pwsh
 # start-gpu.ps1 — Run Gemma 4 26B-A4B on NVIDIA/Windows, max-context-first.
-# Usage: .\start-gpu.ps1 --ask "PROMPT" | --chat | (none = Pi agent)
+# Usage: .\start-gpu.ps1 --ask "PROMPT" [--verbose]
 
 param(
-    [switch]$chat,
     [string]$ask = "",
-    [switch]$cpu,
-    [switch]$debug
+    [switch]$verbose
 )
-
-$ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $modelPath = "E:\Models\gemma-4-26B-A4B-it.Q4_K_S.gguf"
@@ -18,93 +14,76 @@ $serverHost = "127.0.0.1"
 $serverPort = 8080
 $apiBase = "http://${serverHost}:${serverPort}/v1"
 
+function V { param($m) if ($verbose) { Write-Host "  [$((Get-Date).ToString('HH:mm:ss'))] $m" -ForegroundColor DarkGray } }
+
+V "script dir: $scriptDir"
+V "ask param: [$ask]"
+
 # --- Detect VRAM ---
 $vramMB = 0
 if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
     $vramMB = [int](nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | Select-Object -First 1)
 }
+V "VRAM: ${vramMB} MiB"
 
-# --- Compute GPU layers + context for usable speed --------------------------
-# Measured: 338 MiB/layer, 500 MiB overhead, q4_0 KV = 15 KiB/token.
-# 262K ctx fits only 5 GPU layers (25 on CPU = ~0.1 tok/s, unusable).
-# 16K ctx fits 16 layers (14 on CPU = ~2-5 tok/s, practical default).
-$perLayerMB = 338
-$overheadMB = 500
-$kvQ4Kib = 15
-$contextTokens = 16384   # practical default; override with CONTEXT_TOKENS env
-
-if ($cpu) {
-    $gpuLayers = 0
-} elseif ($vramMB -gt 0) {
+# --- Compute GPU layers (338 MiB/layer, 500 MiB overhead, 16K ctx default) ---
+$perLayerMB = 338; $overheadMB = 500; $kvQ4Kib = 15; $contextTokens = 16384
+if ($vramMB -gt 0) {
     $needKvMB = [math]::Floor($contextTokens * $kvQ4Kib / 1024)
-    $layerBudgetMB = $vramMB - $overheadMB - $needKvMB
-    $gpuLayers = [math]::Floor($layerBudgetMB / $perLayerMB)
-    if ($gpuLayers -gt 30) { $gpuLayers = 30 }
-    if ($gpuLayers -lt 1) { $gpuLayers = 1 }
+    $gpuLayers = [math]::Max(1, [math]::Min(30, [math]::Floor(($vramMB - $overheadMB - $needKvMB) / $perLayerMB)))
 } else {
     $gpuLayers = 0
 }
-
 $threads = [math]::Max(1, (Get-CimInstance Win32_Processor).NumberOfLogicalProcessors - 1)
+V "gpu layers: $gpuLayers | context: $contextTokens | threads: $threads"
 
-# --- Quiet mode ---
-$quiet = ($ask -ne "")
-
-if (-not $quiet) {
-    Write-Host "============================================================"
-    Write-Host " llama.cpp + Gemma 4  (Windows Native + CUDA GPU)"
-    Write-Host "============================================================"
-    Write-Host "   backend:    $llamaServer"
-    Write-Host "   model:      $modelPath"
-    Write-Host "   gpu layers: $gpuLayers  |  context: $contextTokens tok  |  threads: $threads"
-    Write-Host "============================================================"
-}
-
-# --- Kill existing + start server ---
+# --- Start server ---
 Get-Process -Name llama-server -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Seconds 1
-
-if (-not $quiet) { Write-Host "Launching llama-server ..." }
-
+V "starting server..."
 $serverArgs = @('-m', $modelPath, '-ngl', "$gpuLayers", '-c', "$contextTokens", '-t', "$threads",
                 '--host', $serverHost, '--port', "$serverPort", '--temp', '0',
-                '-ctk', 'q4_0', '-ctv', 'q4_0', '-ub', '128', '-fa', 'on', '--no-mmap')
-
-$serverProc = Start-Process -WindowStyle Hidden -FilePath $llamaServer -ArgumentList $serverArgs -PassThru -RedirectStandardOutput (Join-Path $scriptDir "llama_server.log") -RedirectStandardError (Join-Path $scriptDir "llama_server_err.log")
-
-# --- Wait for health ---
-if (-not $quiet) { Write-Host "Loading model weights ..." }
-$ready = $false
-for ($i = 0; $i -lt 180; $i++) {
-    try {
-        $resp = Invoke-WebRequest -Uri "http://${serverHost}:${serverPort}/health" -TimeoutSec 2 -UseBasicParsing
-        if ($resp.Content -match '"status":"ok"') { $ready = $true; break }
-    } catch { }
-    Start-Sleep -Seconds 2
-}
-if (-not $ready) {
-    Write-Error "Timed out waiting for llama-server to be ready. Check $(Join-Path $scriptDir 'llama_server.log')"
+                '-ctk', 'q4_0', '-ctv', 'q4_0', '-ub', '128', '-fa', 'on')
+try {
+    $serverProc = Start-Process -WindowStyle Hidden -FilePath $llamaServer -ArgumentList $serverArgs -PassThru -RedirectStandardOutput (Join-Path $scriptDir "llama_server.log") -RedirectStandardError (Join-Path $scriptDir "llama_server_err.log")
+    V "server pid: $($serverProc.Id)"
+} catch {
+    Write-Error "Failed to start llama-server: $_"
     exit 1
 }
 
-# --- Warmup inference (heat expert cache) ---
-if (-not $quiet) { Write-Host "Warming up expert cache ..." }
+# --- Wait for health ---
+$ready = $false
+for ($i = 0; $i < 120; $i++) {
+    try {
+        $resp = Invoke-WebRequest -Uri "http://${serverHost}:${serverPort}/health" -TimeoutSec 2 -UseBasicParsing
+        if ($resp.Content -match '"status":"ok"') { $ready = $true; V "ready at $($i*2)s"; break }
+    } catch { V "health check $i failed: $($_.Exception.Message)" }
+    Start-Sleep -Seconds 2
+}
+if (-not $ready) {
+    Write-Error "Timed out waiting for server. Check $(Join-Path $scriptDir 'llama_server.log')"
+    V "last log lines: $(Get-Content (Join-Path $scriptDir 'llama_server.log') -Tail 5 -ErrorAction SilentlyContinue)"
+    exit 1
+}
+
+# --- Warmup ---
+V "warming up expert cache..."
 try {
-    $body = @{prompt="The";n_predict=1;temperature=0;stream=$false} | ConvertTo-Json -Compress
-    Invoke-RestMethod -Uri "${apiBase}/completion" -Method Post -ContentType "application/json" -Body $body | Out-Null
-} catch { }
+    $warmBody = @{prompt="<start_of_turn>user`nHi<end_of_turn>`n<start_of_turn>model`n";n_predict=1;temperature=0;stream=$false} | ConvertTo-Json -Compress
+    Invoke-RestMethod -Uri "${apiBase}/chat/completions" -Method Post -ContentType "application/json" -Body $warmBody | Out-Null
+    V "warmup done"
+} catch { V "warmup failed (non-fatal): $($_.Exception.Message)" }
 
-if (-not $quiet) { Write-Host "Server ready on port $serverPort." }
-
-# --- Handle modes ---
+# --- Query ---
 if ($ask -ne "") {
-    # Embed Gemma 4's chat-template tokens directly so the model sees the
-    # correct turn structure and answers instead of entering meta-mode.
+    V "querying with prompt: $ask"
     $userContent = "<start_of_turn>user`n${ask}<end_of_turn>`n<start_of_turn>model`n"
-    $messages = @(@{role="user";content=$userContent})
-    $qBody = @{model="gemma-4-26b-a4b-it";messages=$messages;max_completion_tokens=4096;temperature=0.2;stream=$false;stop=@("<end_of_turn>")} | ConvertTo-Json -Depth 5 -Compress
+    $qBody = @{model="gemma-4-26b-a4b-it";messages=@(@{role="user";content=$userContent});max_completion_tokens=4096;temperature=0.2;stream=$false;stop=@("<end_of_turn>")} | ConvertTo-Json -Depth 5 -Compress
+    V "request body: $qBody"
     try {
         $result = Invoke-RestMethod -Uri "${apiBase}/chat/completions" -Method Post -ContentType "application/json" -Body $qBody -TimeoutSec 300
+        V "response: $($result | ConvertTo-Json -Compress -Depth 3)"
         Write-Output $result.choices[0].message.content
     } catch {
         Write-Error "Query failed: $_"
@@ -113,6 +92,5 @@ if ($ask -ne "") {
     exit 0
 }
 
-# Default: just leave server running
 Write-Host "Server is ready at $apiBase. Press Ctrl+C to stop."
 wait-process -Id $serverProc.Id
